@@ -52,35 +52,42 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { fmtDate, logTypeMap } from '../../utils'
+import type { BatchLogsData, CropBatch, FarmingLog } from '../../types'
 
 const route = useRoute()
 const batchId = route.params.id
-const batch = ref(null)
-const logs = ref([])
-const addVisible = ref(false)
-const saving = ref(false)
+const batch = ref<CropBatch | null>(null)
+const logs = ref<FarmingLog[]>([])
+const addVisible = ref<boolean>(false)
+const saving = ref<boolean>(false)
 const addForm = reactive({ logType: '', logDate: '', material: '', dosage: '', content: '' })
 
-async function load() {
-  const d = await http.get(`/api/farmer/batches/${batchId}/logs`)
+async function load(): Promise<void> {
+  const d = await http.get<BatchLogsData>(`/api/farmer/batches/${batchId}/logs`)
   batch.value = d.batch
   logs.value = d.logs
 }
 
-const openAdd = () => {
+const openAdd = (): void => {
   Object.assign(addForm, { logType: '', logDate: new Date().toISOString().slice(0, 10), material: '', dosage: '', content: '' })
   addVisible.value = true
 }
 
-async function saveAdd() {
-  if (!addForm.logType) return ElMessage.warning('请选择农事类型')
-  if (!addForm.logDate) return ElMessage.warning('请选择记录日期')
+async function saveAdd(): Promise<void> {
+  if (!addForm.logType) {
+    ElMessage.warning('请选择农事类型')
+    return
+  }
+  if (!addForm.logDate) {
+    ElMessage.warning('请选择记录日期')
+    return
+  }
   saving.value = true
   try {
     await http.post(`/api/farmer/batches/${batchId}/logs`, addForm)

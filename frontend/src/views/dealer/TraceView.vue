@@ -56,21 +56,22 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import http from '../../api/http'
 import { batchStatusMap, fmtDate, fmtTime, logTypeMap, traceTypeMap } from '../../utils'
+import type { DealerTraceData } from '../../types'
 
-const traceCode = ref('')
-const searched = ref(false)
-const d = ref({})
+const traceCode = ref<string>('')
+const searched = ref<boolean>(false)
+const d = ref<DealerTraceData>({})
 
-async function query() {
+async function query(): Promise<void> {
   const code = traceCode.value.trim()
   if (!code) return
-  d.value = await http.get('/api/dealer/trace', { params: { traceCode: code } })
+  d.value = await http.get<DealerTraceData>('/api/dealer/trace', { params: { traceCode: code } })
   searched.value = true
 }
 
-const openPublic = () => window.open(`/app/trace/${d.value.batch.traceCode}`, '_blank')
+const openPublic = (): Window | null => window.open(`/app/trace/${d.value.batch?.traceCode}`, '_blank')
 </script>

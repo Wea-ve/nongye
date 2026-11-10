@@ -100,8 +100,7 @@ public class TraceController {
     public String submitComplaint(Complaint complaint, Model model) {
         // 必填字段校验，防止空投诉刷库
         if (isBlank(complaint.getComplainant()) || isBlank(complaint.getContent())) {
-            model.addAttribute("error", "投诉人和投诉内容不能为空");
-            return "complaint/form";
+            return "redirect:/app/complaint/new?error=1";
         }
         complaintMapper.insert(complaint);
         log.info("收到投诉：{} 联系方式：{} 批次ID：{} 查询码：{}",
@@ -128,13 +127,12 @@ public class TraceController {
     @PostMapping("/complaint/query")
     public String complaintQuery(String keyword, Model model) {
         if (keyword == null || keyword.trim().isEmpty()) {
-            model.addAttribute("error", "请输入手机号或查询码");
-            return "complaint/query";
+            return "redirect:/app/complaint/query";
         }
         List<Complaint> list = complaintMapper.selectByPhoneOrCode(keyword.trim());
         model.addAttribute("complaints", list);
         model.addAttribute("keyword", keyword.trim());
-        return "complaint/query";
+        return "redirect:/app/complaint/query?keyword=" + keyword.trim();
     }
 
     /**

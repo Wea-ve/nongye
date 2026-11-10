@@ -30,22 +30,23 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue'
 import http from '../../api/http'
 import { batchStatusMap, fmtDate } from '../../utils'
+import type { AdminTraceData, CropBatch } from '../../types'
 
-const traceCode = ref('')
-const batch = computed(() => result.value.batch)
-const searched = ref(false)
-const result = ref({})
+const traceCode = ref<string>('')
+const batch = computed<CropBatch | undefined>(() => result.value.batch ?? undefined)
+const searched = ref<boolean>(false)
+const result = ref<AdminTraceData>({})
 
-async function query() {
+async function query(): Promise<void> {
   const code = traceCode.value.trim()
   if (!code) return
-  result.value = await http.get('/api/admin/trace', { params: { traceCode: code } })
+  result.value = await http.get<AdminTraceData>('/api/admin/trace', { params: { traceCode: code } })
   searched.value = true
 }
 
-const openPublic = () => window.open(`/app/trace/${batch.value.traceCode}`, '_blank')
+const openPublic = (): Window | null => window.open(`/app/trace/${batch.value!.traceCode}`, '_blank')
 </script>

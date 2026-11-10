@@ -47,7 +47,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item label="报告文件">
-          <input type="file" accept=".pdf,.png,.jpg,.jpeg" @change="e => (file = e.target.files[0])" />
+          <input type="file" accept=".pdf,.png,.jpg,.jpeg" @change="onFileChange" />
           <div style="font-size: 12px; color: #999">支持 PDF/PNG/JPG，10MB 以内</div>
         </el-form-item>
       </el-form>
@@ -59,42 +59,54 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { fmtDate } from '../../utils'
+import type { CropBatch, DetectionReport, FarmerReportsData } from '../../types'
 
-const reports = ref([])
-const batches = ref([])
-const loading = ref(false)
-const saving = ref(false)
-const addVisible = ref(false)
-const file = ref(null)
-const addForm = reactive({ batchId: null, reportNo: '', institution: '', reportDate: '', result: '合格' })
+const reports = ref<DetectionReport[]>([])
+const batches = ref<CropBatch[]>([])
+const loading = ref<boolean>(false)
+const saving = ref<boolean>(false)
+const addVisible = ref<boolean>(false)
+const file = ref<File | null>(null)
+const addForm = reactive<{ batchId: number | null; reportNo: string; institution: string; reportDate: string; result: string }>({ batchId: null, reportNo: '', institution: '', reportDate: '', result: '合格' })
 
-async function load() {
+async function load(): Promise<void> {
   loading.value = true
   try {
-    const d = await http.get('/api/farmer/reports')
+    const d = await http.get<FarmerReportsData>('/api/farmer/reports')
     reports.value = d.reports
     batches.value = d.batches
   } finally { loading.value = false }
 }
 
-const openAdd = () => {
+const openAdd = (): void => {
   Object.assign(addForm, { batchId: null, reportNo: '', institution: '', reportDate: '', result: '合格' })
   file.value = null
   addVisible.value = true
 }
 
-async function save() {
-  if (!addForm.batchId) return ElMessage.warning('请选择批次')
-  if (!addForm.result) return ElMessage.warning('请选择检测结果')
+function onFileChange(e: Event): void {
+  const input = e.target as HTMLInputElement
+  file.value = input.files && input.files[0] ? input.files[0] : null
+}
+
+async function save(): Promise<void> {
+  if (!addForm.batchId) {
+    ElMessage.warning('请选择批次')
+    return
+  }
+  if (!addForm.result) {
+    ElMessage.warning('请选择检测结果')
+    return
+  }
   saving.value = true
   try {
     const fd = new FormData()
-    Object.entries(addForm).forEach(([k, v]) => v != null && fd.append(k, v))
+    Object.entries(addForm).forEach(([k, v]) => v != null && fd.append(k, String(v)))
     if (file.value) fd.append('file', file.value)
     await http.post('/api/farmer/reports', fd)
     ElMessage.success('报告已上传')

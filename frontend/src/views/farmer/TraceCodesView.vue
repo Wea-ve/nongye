@@ -27,17 +27,18 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
+import type { CropBatch, TraceCodesData } from '../../types'
 
-const baseUrl = ref('')
-const batches = ref([])
+const baseUrl = ref<string>('')
+const batches = ref<CropBatch[]>([])
 
-const withTrace = computed(() => batches.value.filter(b => b.traceCode))
+const withTrace = computed<CropBatch[]>(() => batches.value.filter(b => b.traceCode))
 
-async function copyLink(b) {
+async function copyLink(b: CropBatch): Promise<void> {
   try {
     await navigator.clipboard.writeText(`${baseUrl.value}/trace/${b.traceCode}`)
     ElMessage.success('链接已复制')
@@ -45,10 +46,10 @@ async function copyLink(b) {
     ElMessage.warning('复制失败，请手动复制：' + baseUrl.value + '/trace/' + b.traceCode)
   }
 }
-const openPage = (b) => window.open(`/app/trace/${b.traceCode}`, '_blank')
+const openPage = (b: CropBatch): Window | null => window.open(`/app/trace/${b.traceCode}`, '_blank')
 
 onMounted(async () => {
-  const d = await http.get('/api/farmer/trace-codes')
+  const d = await http.get<TraceCodesData>('/api/farmer/trace-codes')
   batches.value = d.batches
   baseUrl.value = d.baseUrl
 })

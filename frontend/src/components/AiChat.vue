@@ -10,27 +10,43 @@
     <transition name="ai-pop">
       <div v-if="open" class="ai-panel">
         <div class="ai-head">
-          <span>🌾 溯源智能问答</span>
+          <span>🛡️ 消费助手问答</span>
           <div class="ai-head-btns">
             <button class="ai-head-btn" title="清空对话" @click="clearChat" v-if="messages.length">🗑️</button>
             <button class="ai-head-btn" title="关闭" @click="open = false">✕</button>
           </div>
         </div>
         <div class="ai-body" ref="bodyEl">
-          <div class="ai-msg bot">您好！我是本批次的 AI 溯源助手，可以问我：农残合格吗？打过几次农药？怎么保存？也可以拍照上传（农药包装、蔬菜状态）让我识别解答～</div>
+          <div class="ai-msg bot">您好！我是「安溯·知源」的消费助手，可以问我：农残合格吗？打过几次农药？怎么保存？也可以告诉我你常买什么，我提醒你下次该买～</div>
           <div v-for="(m, i) in messages" :key="i" class="ai-msg" :class="m.role === 'user' ? 'user' : 'bot'">
             <div class="ai-bubble">
               <img v-if="m.image" :src="m.image" class="ai-msg-img" @click="preview(m.image)" />
-              <div>{{ m.text }}</div>
+              <div>{{ m.text }}<span v-if="m.streaming" class="ai-cursor"></span></div>
               <!-- 本轮调用的工具徽章 -->
               <div v-if="m.tools && m.tools.length" class="ai-tools">
                 <span v-for="(t, ti) in m.tools" :key="ti" class="ai-tool-chip" :title="t.summary">
                   🔧 {{ t.label }}
                 </span>
               </div>
+              <!-- 答案依据：让回答可核验 -->
+              <div v-if="m.sources && m.sources.length" class="ai-sources">
+                <div class="ai-sources-title">📎 答案依据</div>
+                <div v-for="(s, si) in m.sources" :key="si" class="ai-source-item">
+                  <span class="ai-source-type">{{ sourceTypeMap[s.type] || '资料' }}</span>
+                  <span class="ai-source-label">{{ s.label }}</span>
+                  <span v-if="s.detail" class="ai-source-detail">{{ s.detail }}</span>
+                </div>
+              </div>
             </div>
           </div>
-          <div v-if="loading" class="ai-msg bot"><div class="ai-bubble typing">{{ imagePending ? '正在识别图片…' : '正在思考…' }}</div></div>
+          <div v-if="loading && !hasStreaming" class="ai-msg bot">
+            <div class="ai-bubble typing">
+              <div v-if="!steps.length">正在思考…</div>
+              <div v-for="(s, si) in steps" :key="si" class="ai-step">
+                <span class="ai-step-dot">✓</span>{{ s.summary }}
+              </div>
+            </div>
+          </div>
         </div>
         <!-- 待发送图片预览 -->
         <div v-if="imagePending" class="ai-img-preview">
@@ -54,20 +70,79 @@
   </div>
 </template>
 
-<script setup>
-import { nextTick, ref } from 'vue'
+<script setup lang="ts">
+import { computed, nextTick, ref } from 'vue'
 import http from '../api/http'
 
-const props = defineProps({ batchId: { type: Number, required: true } })
+interface ToolBadge {
+  label: string
+  summary?: string
+}
 
-const open = ref(false)
-const input = ref('')
-const loading = ref(false)
-const messages = ref([])
-const bodyEl = ref(null)
-const fileEl = ref(null)
-const imagePending = ref('')   // 待发送图片 data URL
-const previewUrl = ref('')     // 放大预览
+interface SourceItem {
+  type: string
+  label: string
+  detail?: string
+  score?: number
+}
+
+interface ChatMessage {
+  role: 'user' | 'bot'
+  text: string
+  image?: string
+  tools?: ToolBadge[]
+  sources?: SourceItem[]
+  streaming?: boolean
+}
+
+interface ChatReply {
+  reply: string
+  tools?: ToolBadge[]
+  sources?: SourceItem[]
+}
+
+interface ChatPayload {
+  batchId?: number
+  question: string
+  sessionId: string
+  image?: string
+}
+
+interface StreamEvent {
+  type: 'step' | 'delta' | 'reply'
+  label?: string
+  summary?: string
+  delta?: string
+  reply?: string
+  tools?: ToolBadge[]
+  sources?: SourceItem[]
+}
+
+const props = defineProps<{ batchId?: number }>()
+
+const open = ref<boolean>(false)
+const input = ref<string>('')
+const loading = ref<boolean>(false)
+const messages = ref<ChatMessage[]>([])
+const bodyEl = ref<HTMLElement | null>(null)
+const fileEl = ref<HTMLInputElement | null>(null)
+const imagePending = ref<string>('')   // 待发送图片 data URL
+const previewUrl = ref<string>('')     // 放大预览
+const steps = ref<StreamEvent[]>([])   // 实时工具/识别步骤
+const hasStreaming = computed<boolean>(() => messages.value.some(m => m.streaming))
+
+/** 依据类型 → 展示文案 */
+const sourceTypeMap: Record<string, string> = {
+  data: '批次数据',
+  record: '农事记录',
+  report: '检测报告',
+  trace: '流转记录',
+  knowledge: '知识库',
+  image: '图片识别',
+  basket: '我的常购',
+  history: '我的历史',
+  recommend: '当季推荐'
+}
 
 // 会话 ID：页面内保持多轮上下文
 let sessionId = `s-${Date.now()}-${Math.floor(Math.random() * 100000)}`
@@ -85,9 +160,10 @@ const scrollBottom = () => nextTick(() => {
 })
 
 /** 选择图片：canvas 压缩到最长边 1024px、JPEG 0.8，控制请求体积 */
-function onPickImage(e) {
-  const file = e.target.files && e.target.files[0]
-  e.target.value = ''
+function onPickImage(e: Event) {
+  const target = e.target as HTMLInputElement
+  const file = target.files?.[0]
+  target.value = ''
   if (!file) return
   const reader = new FileReader()
   reader.onload = () => {
@@ -103,15 +179,27 @@ function onPickImage(e) {
       const canvas = document.createElement('canvas')
       canvas.width = width
       canvas.height = height
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+      canvas.getContext('2d')?.drawImage(img, 0, 0, width, height)
       imagePending.value = canvas.toDataURL('image/jpeg', 0.8)
     }
-    img.src = reader.result
+    img.src = reader.result as string
   }
   reader.readAsDataURL(file)
 }
 
-async function send() {
+/** 当前正在逐字输出的气泡索引；-1 表示尚未创建 */
+let streamIndex = -1
+
+/** 首个 delta 到达时才创建回答气泡，避免出现空气泡 */
+function ensureStreamBubble(): ChatMessage {
+  if (streamIndex < 0) {
+    messages.value.push({ role: 'bot', text: '', tools: [], sources: [], streaming: true })
+    streamIndex = messages.value.length - 1
+  }
+  return messages.value[streamIndex]
+}
+
+async function send(): Promise<void> {
   const q = input.value.trim()
   const img = imagePending.value
   if ((!q && !img) || loading.value) return
@@ -119,25 +207,209 @@ async function send() {
   input.value = ''
   imagePending.value = ''
   loading.value = true
+  steps.value = []
+  streamIndex = -1
   scrollBottom()
+  const payload: ChatPayload = { batchId: props.batchId, question: q || '请分析这张照片', sessionId, image: img }
   try {
-    const data = await http.post('/api/ai/chat',
-      { batchId: props.batchId, question: q || '请分析这张照片', sessionId, image: img },
-      { timeout: 90000 })
-    messages.value.push({
-      role: 'bot',
-      text: data?.reply || 'AI 暂时无法回答',
-      tools: data?.tools || []
-    })
+    const data = await chatStream(payload)
+    if (streamIndex >= 0) {
+      // 流式气泡已展示部分内容，用最终结果补全工具与依据
+      const m = messages.value[streamIndex]
+      m.text = data.reply || m.text
+      m.tools = data.tools || []
+      m.sources = data.sources || []
+      m.streaming = false
+      streamIndex = -1
+    } else {
+      messages.value.push({
+        role: 'bot',
+        text: data.reply || 'AI 暂时无法回答',
+        tools: data.tools || [],
+        sources: data.sources || []
+      })
+    }
   } catch {
-    messages.value.push({ role: 'bot', text: 'AI 服务暂时不可用，请稍后再试', tools: [] })
+    // 流式中断：丢弃半截气泡，退回普通接口重试
+    if (streamIndex >= 0) {
+      messages.value.splice(streamIndex, 1)
+      streamIndex = -1
+    }
+    try {
+      const data = await http.post<ChatReply>('/api/ai/chat', payload, { timeout: 90000 })
+      messages.value.push({
+        role: 'bot',
+        text: data.reply || 'AI 暂时无法回答',
+        tools: data.tools || [],
+        sources: data.sources || []
+      })
+    } catch {
+      messages.value.push({ role: 'bot', text: 'AI 服务暂时不可用，请稍后再试', tools: [] })
+    }
   } finally {
     loading.value = false
+    steps.value = []
     scrollBottom()
   }
 }
 
-function preview(url) { previewUrl.value = url }
+/** 读取 SSE 流：step 步骤 / delta 逐字文本 / reply 最终结果 */
+async function chatStream(payload: ChatPayload): Promise<ChatReply> {
+  const resp = await fetch('/api/ai/chat/stream', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(payload)
+  })
+  if (!resp.ok || !resp.body) throw new Error('stream unavailable')
+
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  let finalData: ChatReply | null = null
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const chunks = buffer.split('\n\n')
+    buffer = chunks.pop() || ''
+    for (const chunk of chunks) {
+      const dataLine = chunk.split('\n').find((l: string) => l.startsWith('data:'))
+      if (!dataLine) continue
+      let event: StreamEvent
+      try {
+        event = JSON.parse(dataLine.slice(5).trim()) as StreamEvent
+      } catch {
+        continue
+      }
+      if (event.type === 'step') {
+        steps.value.push(event)
+        scrollBottom()
+      } else if (event.type === 'delta') {
+        ensureStreamBubble().text += event.delta || ''
+        scrollBottom()
+      } else if (event.type === 'reply') {
+        finalData = { reply: event.reply || '', tools: event.tools, sources: event.sources }
+      }
+    }
+  }
+  if (!finalData) throw new Error('no reply')
+  return finalData
+}
+
+function preview(url: string): void { previewUrl.value = url }
+</script>
+
+<script lang="ts">
+/**
+ * 对外导出：类型 + 纯 SSE 读取函数
+ * AssistantView 等页面可以复用这套对话流，无需依赖 AiChat 浮窗组件
+ */
+
+export interface ToolBadge {
+  label: string
+  summary?: string
+}
+
+export interface SourceItem {
+  type: string
+  label: string
+  detail?: string
+  score?: number
+}
+
+export interface ChatMessage {
+  role: 'user' | 'bot'
+  text: string
+  image?: string
+  tools?: ToolBadge[]
+  sources?: SourceItem[]
+  streaming?: boolean
+}
+
+export interface ChatReply {
+  reply: string
+  tools?: ToolBadge[]
+  sources?: SourceItem[]
+}
+
+export interface ChatPayload {
+  batchId?: number | null
+  question: string
+  sessionId: string
+  image?: string
+}
+
+export interface StreamEvent {
+  type: 'step' | 'delta' | 'reply'
+  label?: string
+  summary?: string
+  delta?: string
+  reply?: string
+  tools?: ToolBadge[]
+  sources?: SourceItem[]
+}
+
+/** 依据类型 → 展示文案映射（可在外部复用） */
+export const sourceTypeMap: Record<string, string> = {
+  data: '批次数据',
+  record: '农事记录',
+  report: '检测报告',
+  trace: '流转记录',
+  knowledge: '知识库',
+  image: '图片识别'
+}
+
+/**
+ * 流式对话：纯函数，不依赖组件状态
+ * @param payload 提问参数
+ * @param onEvent 每个 SSE 事件回调（step / delta / reply 都会触发）
+ * @returns 最终完整回复（包含最终工具徽章和依据）
+ */
+export async function chatStream(
+  payload: ChatPayload,
+  onEvent?: (event: StreamEvent) => void
+): Promise<ChatReply> {
+  const resp = await fetch('/api/ai/chat/stream', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(payload)
+  })
+  if (!resp.ok || !resp.body) throw new Error('stream unavailable')
+
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  let finalData: ChatReply | null = null
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const chunks = buffer.split('\n\n')
+    buffer = chunks.pop() || ''
+    for (const chunk of chunks) {
+      const dataLine = chunk.split('\n').find((l: string) => l.startsWith('data:'))
+      if (!dataLine) continue
+      let event: StreamEvent
+      try {
+        event = JSON.parse(dataLine.slice(5).trim()) as StreamEvent
+      } catch {
+        continue
+      }
+      if (event.type === 'step') {
+        onEvent?.(event)
+      } else if (event.type === 'delta') {
+        onEvent?.(event)
+      } else if (event.type === 'reply') {
+        finalData = { reply: event.reply || '', tools: event.tools, sources: event.sources }
+        onEvent?.(event)
+      }
+    }
+  }
+  if (!finalData) throw new Error('no reply')
+  return finalData
+}
 </script>
 
 <style scoped>
@@ -178,12 +450,28 @@ function preview(url) { previewUrl.value = url }
 .ai-msg.bot .ai-bubble { background: #fff; color: #333; border: 1px solid #e3eee4; }
 .ai-msg.user .ai-bubble { background: #2e7d32; color: #fff; }
 .typing { color: #999; }
+.ai-cursor {
+  display: inline-block; width: 2px; height: 12px; margin-left: 2px;
+  background: #2e7d32; vertical-align: -1px; animation: ai-blink .8s steps(1) infinite;
+}
+@keyframes ai-blink { 50% { opacity: 0; } }
 .ai-msg-img { width: 140px; border-radius: 8px; margin-bottom: 6px; display: block; cursor: zoom-in; }
 .ai-tools { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
 .ai-tool-chip {
   font-size: 11px; color: #1b5e20; background: #e8f5e9;
   border: 1px solid #c8e6c9; border-radius: 10px; padding: 1px 8px;
 }
+.ai-step { display: flex; align-items: flex-start; gap: 4px; color: #4a674e; }
+.ai-step-dot { color: #2e7d32; font-weight: 700; }
+.ai-sources { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #dcecdc; }
+.ai-sources-title { font-size: 11px; color: #7d8f81; margin-bottom: 4px; }
+.ai-source-item { font-size: 11px; color: #4a674e; line-height: 1.6; }
+.ai-source-type {
+  background: #eef5ee; border: 1px solid #d5e8d6; color: #1b5e20;
+  border-radius: 4px; padding: 0 4px; margin-right: 4px;
+}
+.ai-source-label { font-weight: 600; }
+.ai-source-detail { color: #8a9c8d; margin-left: 4px; }
 .ai-img-preview {
   position: relative; margin: 8px 12px 0;
   border: 1px solid #e3eee4; border-radius: 8px; width: 72px; height: 72px; overflow: hidden;

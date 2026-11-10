@@ -79,11 +79,14 @@ public class ApiAdminController {
         return ApiResult.ok(data);
     }
 
-    /** 顶栏铃铛角标：待处理投诉数量 */
+    /** 顶栏铃铛角标：待处理投诉总数 + 已超时升级数 */
     @GetMapping("/pending-count")
     public ApiResult<Map<String, Object>> pendingCount(HttpSession session) {
         current(session);
-        return ApiResult.ok(Map.of("count", complaintMapper.countPending()));
+        Map<String, Object> r = new HashMap<>();
+        r.put("count", complaintMapper.countPending());
+        r.put("overtime", complaintMapper.countOverduePending());
+        return ApiResult.ok(r);
     }
 
     /**

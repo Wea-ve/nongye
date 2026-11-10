@@ -21,16 +21,17 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import http from '../../api/http'
 import { logTypeMap } from '../../utils'
+import type { FarmingLog } from '../../types'
 
-const logs = ref([])
-const loading = ref(false)
+const logs = ref<FarmingLog[]>([])
+const loading = ref<boolean>(false)
 
 onMounted(async () => {
   loading.value = true
-  try { logs.value = await http.get('/api/admin/farming-logs') } finally { loading.value = false }
+  try { logs.value = await http.get<FarmingLog[]>('/api/admin/farming-logs') } finally { loading.value = false }
 })
 </script>

@@ -3,6 +3,7 @@ package org.example.nongye.mapper;
 import org.apache.ibatis.annotations.*;
 import org.example.nongye.entity.TraceRecord;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Mapper
@@ -80,6 +81,24 @@ public interface TraceRecordMapper {
     @Select("SELECT DATE(operate_time) AS day, COUNT(*) AS cnt FROM trace_record " +
             "WHERE operate_time >= DATE_SUB(CURDATE(), INTERVAL #{days} DAY) GROUP BY DATE(operate_time) ORDER BY day")
     List<java.util.Map<String, Object>> countByDay(@Param("days") int days);
+
+    /**
+     * 某批次的某类流转总数量（入库/出库）
+     */
+    @Select("SELECT COALESCE(SUM(quantity), 0) FROM trace_record WHERE batch_id = #{batchId} AND type = #{type}")
+    BigDecimal sumQuantityByBatchAndType(@Param("batchId") Long batchId, @Param("type") String type);
+
+    /**
+     * 某经销商在某批次的入库总量
+     */
+    @Select("SELECT COALESCE(SUM(quantity), 0) FROM trace_record WHERE batch_id = #{batchId} AND type = 'INBOUND' AND to_user = #{userId}")
+    BigDecimal sumInboundByDealer(@Param("batchId") Long batchId, @Param("userId") Long userId);
+
+    /**
+     * 某经销商在某批次的出库总量
+     */
+    @Select("SELECT COALESCE(SUM(quantity), 0) FROM trace_record WHERE batch_id = #{batchId} AND type = 'OUTBOUND' AND from_user = #{userId}")
+    BigDecimal sumOutboundByDealer(@Param("batchId") Long batchId, @Param("userId") Long userId);
 
     /**
      * 某批次的流转节点数（用于可信徽章）

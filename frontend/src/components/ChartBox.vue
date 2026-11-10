@@ -2,26 +2,28 @@
   <div ref="el" :style="{ height, width: '100%' }"></div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import * as echarts from 'echarts'
+import type { EChartsOption, ECharts } from 'echarts'
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 
-const props = defineProps({
-  option: { type: Object, default: null },
-  height: { type: String, default: '300px' }
+const props = withDefaults(defineProps<{ option: EChartsOption | null; height?: string }>(), {
+  height: '300px'
 })
 
-const el = ref(null)
-let chart = null
+const el = ref<HTMLDivElement | null>(null)
+let chart: ECharts | null = null
 
-const render = () => {
+const render = (): void => {
   if (chart && props.option) chart.setOption(props.option, true)
 }
 
-const resize = () => chart && chart.resize()
+const resize = (): void => {
+  if (chart) chart.resize()
+}
 
 onMounted(() => {
-  chart = echarts.init(el.value)
+  if (el.value) chart = echarts.init(el.value)
   render()
   window.addEventListener('resize', resize)
 })

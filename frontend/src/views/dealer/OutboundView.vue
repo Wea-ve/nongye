@@ -49,30 +49,31 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { batchStatusMap } from '../../utils'
+import type { CropBatch, OutboundData } from '../../types'
 
-const list = ref([])
-const inboundIds = ref(new Set())
-const loading = ref(false)
-const saving = ref(false)
-const visible = ref(false)
-const row = ref(null)
-const form = reactive({ quantity: null, toName: '', location: '' })
+const list = ref<CropBatch[]>([])
+const inboundIds = ref<Set<number>>(new Set())
+const loading = ref<boolean>(false)
+const saving = ref<boolean>(false)
+const visible = ref<boolean>(false)
+const row = ref<CropBatch | null>(null)
+const form = reactive<{ quantity: number | null; toName: string; location: string }>({ quantity: null, toName: '', location: '' })
 
-async function load() {
+async function load(): Promise<void> {
   loading.value = true
   try {
-    const d = await http.get('/api/dealer/outbound-data')
+    const d = await http.get<OutboundData>('/api/dealer/outbound-data')
     list.value = d.list
     inboundIds.value = new Set(d.inboundIds)
   } finally { loading.value = false }
 }
 
-const openOut = (r) => {
+const openOut = (r: CropBatch): void => {
   row.value = r
   form.quantity = null
   form.toName = ''
@@ -80,12 +81,18 @@ const openOut = (r) => {
   visible.value = true
 }
 
-async function submit() {
-  if (!form.quantity) return ElMessage.warning('请填写出库数量')
-  if (!form.toName.trim() || !form.location.trim()) return ElMessage.warning('请填写收货方和发货地点')
+async function submit(): Promise<void> {
+  if (!form.quantity) {
+    ElMessage.warning('请填写出库数量')
+    return
+  }
+  if (!form.toName.trim() || !form.location.trim()) {
+    ElMessage.warning('请填写收货方和发货地点')
+    return
+  }
   saving.value = true
   try {
-    await http.post('/api/dealer/outbound', { batchId: row.value.id, ...form })
+    await http.post('/api/dealer/outbound', { batchId: row.value!.id, ...form })
     ElMessage.success('出库成功，已写入流转记录')
     visible.value = false
     load()

@@ -6,14 +6,14 @@
         <el-button text class="burger" @click="drawer = true">
           <el-icon :size="22"><Fold /></el-icon>
         </el-button>
-        <div class="brand">🌾 农芯溯源</div>
+        <div class="brand"><img class="brand-ico" src="../assets/logo-icon.svg" alt="安溯·知源" />安溯·知源</div>
         <el-tag size="small" effect="dark" round class="role-tag">{{ roleInfo.name }}端</el-tag>
       </div>
       <div class="topbar-right">
         <div class="clock">{{ clock }}</div>
-        <!-- 管理员专属：待处理投诉提醒铃铛 -->
-        <el-badge v-if="isAdmin" :value="pendingCount" :hidden="pendingCount === 0" class="bell"
-                  :class="{ shake: bellShake }">
+        <!-- 管理员专属：待处理投诉提醒铃铛（超时升级=角标红色 pulse 动画） -->
+        <el-badge v-if="isAdmin" :value="pendingTotal" :hidden="pendingTotal === 0" class="bell"
+                  :class="{ shake: bellShake, overtime: overtimeCount > 0 }">
           <el-button text @click="goPending">
             <el-icon :size="20"><Bell /></el-icon>
           </el-button>
@@ -41,7 +41,7 @@
       <div v-if="drawer" class="drawer-mask" @click.self="drawer = false">
         <aside class="drawer-panel">
           <div class="drawer-head">
-            <div class="drawer-brand">🌾 农芯溯源</div>
+            <div class="drawer-brand"><img class="brand-ico" src="../assets/logo-icon.svg" alt="安溯·知源" />安溯·知源</div>
             <el-button text circle class="drawer-close" @click="drawer = false">
               <el-icon :size="20"><Close /></el-icon>
             </el-button>
@@ -115,28 +115,42 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { UploadFile } from 'element-plus'
 import http from '../api/http'
-import { auth, logout, roleMap } from '../store/auth'
+import { auth, logout, roleMap, type AuthUser, type Role } from '../store/auth'
+
+interface MenuItem {
+  path: string
+  title: string
+  icon: string
+}
+
+interface RoleInfo {
+  name: string
+  icon: string
+  home: string
+}
 
 const route = useRoute()
 const router = useRouter()
 
-const roleInfo = computed(() => roleMap[auth.user?.role] || {})
-const isAdmin = computed(() => auth.user?.role === 'admin')
+const roleInfo = computed<RoleInfo>(() => (auth.user ? roleMap[auth.user.role] : { name: '', icon: '', home: '' }))
+const isAdmin = computed<boolean>(() => auth.user?.role === 'admin')
 
 // 菜单配置（按角色）
-const MENU = {
+const MENU: Record<Role, MenuItem[]> = {
   farmer: [
     { path: '/farmer/dashboard', title: '工作台', icon: '🏠' },
     { path: '/farmer/batch', title: '种植批次', icon: '🌱' },
     { path: '/farmer/logs', title: '农事记录', icon: '📓' },
     { path: '/farmer/trace-codes', title: '溯源码', icon: '🔖' },
     { path: '/farmer/reports', title: '检测报告', icon: '📋' },
-    { path: '/farmer/sales', title: '销售记录', icon: '💰' }
+    { path: '/farmer/sales', title: '销售记录', icon: '💰' },
+    { path: '/farmer/promises', title: '信任承诺', icon: '🤝' }
   ],
   dealer: [
     { path: '/dealer/dashboard', title: '工作台', icon: '🏠' },
@@ -160,54 +174,63 @@ const MENU = {
     { path: '/admin/scan-stats', title: '扫码统计', icon: '📱' }
   ]
 }
-const menus = computed(() => MENU[auth.user?.role] || [])
+const menus = computed<MenuItem[]>(() => (auth.user ? MENU[auth.user.role] : []))
 
-const isActive = (item) => route.path.startsWith(item.path)
-const go = (item) => {
+const isActive = (item: MenuItem): boolean => route.path.startsWith(item.path)
+const go = (item: MenuItem): void => {
   drawer.value = false
   if (!isActive(item)) router.push(item.path)
 }
 
 // 抽屉菜单
-const drawer = ref(false)
+const drawer = ref<boolean>(false)
 
 // 实时时钟
-const clock = ref('')
-let clockTimer = null
-function tick() {
+const clock = ref<string>('')
+let clockTimer: number | undefined
+function tick(): void {
   const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
+  const p = (n: number): string => String(n).padStart(2, '0')
   clock.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-// 管理员铃铛：待处理投诉数
-const pendingCount = ref(0)
-const bellShake = ref(false)
-async function loadPending() {
+// 管理员铃铛：待处理投诉数 + 已超时升级数
+const pendingTotal = ref<number>(0)
+const pendingCount = ref<number>(0)
+const overtimeCount = ref<number>(0)
+const bellShake = ref<boolean>(false)
+async function loadPending(): Promise<void> {
   if (!isAdmin.value) return
   try {
-    const d = await http.get('/api/admin/pending-count')
-    if (d.count !== pendingCount.value) {
+    const d = await http.get<{ count: number; overtime: number }>('/api/admin/pending-count')
+    const total = d.count + d.overtime
+    if (total !== pendingTotal.value) {
       bellShake.value = true
       setTimeout(() => (bellShake.value = false), 800)
     }
+    pendingTotal.value = total
     pendingCount.value = d.count
+    overtimeCount.value = d.overtime
   } catch { /* 忽略 */ }
 }
-const goPending = () => {
-  ElMessage.info(`有 ${pendingCount.value} 个待处理投诉工单`)
+const goPending = (): void => {
+  const tip = overtimeCount.value > 0
+    ? `有 ${pendingCount.value} 个待处理工单 + ${overtimeCount.value} 个已超时升级，请优先处理超时工单`
+    : `有 ${pendingCount.value} 个待处理投诉工单`
+  ElMessage.info(tip)
   router.push('/admin/complaints')
 }
 
 // 个人中心
-const profileVisible = ref(false)
-const profileTab = ref('info')
+const profileVisible = ref<boolean>(false)
+const profileTab = ref<string>('info')
 const profileForm = reactive({ realName: '', phone: '', address: '' })
 const pwdForm = reactive({ oldPassword: '', newPassword: '', confirm: '' })
-const saving = ref(false)
-const savingPwd = ref(false)
+const saving = ref<boolean>(false)
+const savingPwd = ref<boolean>(false)
 
-function openProfile() {
+function openProfile(): void {
+  if (!auth.user) return
   profileForm.realName = auth.user.realName || ''
   profileForm.phone = auth.user.phone || ''
   profileForm.address = auth.user.address || ''
@@ -216,30 +239,40 @@ function openProfile() {
   profileVisible.value = true
 }
 
-async function onAvatarChange(file) {
+async function onAvatarChange(file: UploadFile): Promise<void> {
+  if (!auth.user || !file.raw) return
   const fd = new FormData()
   fd.append('file', file.raw)
   try {
-    const d = await http.post('/api/auth/avatar', fd)
+    const d = await http.post<{ avatar?: string }>('/api/auth/avatar', fd)
     auth.user.avatar = d.avatar
     ElMessage.success('头像已更新')
   } catch { /* 拦截器已提示 */ }
 }
 
-async function saveProfile() {
-  if (!profileForm.realName.trim()) return ElMessage.warning('姓名不能为空')
+async function saveProfile(): Promise<void> {
+  if (!profileForm.realName.trim()) {
+    ElMessage.warning('姓名不能为空')
+    return
+  }
   saving.value = true
   try {
-    const u = await http.put('/api/auth/profile', { ...profileForm })
+    const u = await http.put<AuthUser>('/api/auth/profile', { ...profileForm })
     auth.user = u
     ElMessage.success('个人信息已保存')
     profileVisible.value = false
   } catch { /* 拦截器已提示 */ } finally { saving.value = false }
 }
 
-async function savePwd() {
-  if (pwdForm.newPassword.length < 6) return ElMessage.warning('新密码长度至少 6 位')
-  if (pwdForm.newPassword !== pwdForm.confirm) return ElMessage.warning('两次输入的新密码不一致')
+async function savePwd(): Promise<void> {
+  if (pwdForm.newPassword.length < 6) {
+    ElMessage.warning('新密码长度至少 6 位')
+    return
+  }
+  if (pwdForm.newPassword !== pwdForm.confirm) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
   savingPwd.value = true
   try {
     await http.put('/api/auth/password', { oldPassword: pwdForm.oldPassword, newPassword: pwdForm.newPassword })
@@ -248,7 +281,7 @@ async function savePwd() {
   } catch { /* 拦截器已提示 */ } finally { savingPwd.value = false }
 }
 
-async function onCommand(cmd) {
+async function onCommand(cmd: string): Promise<void> {
   if (cmd === 'profile') openProfile()
   if (cmd === 'logout') {
     await ElMessageBox.confirm('确定退出登录吗？', '提示', { type: 'warning', confirmButtonText: '退出', cancelButtonText: '取消' })
@@ -257,7 +290,7 @@ async function onCommand(cmd) {
   }
 }
 
-let bellTimer = null
+let bellTimer: number | undefined
 onMounted(() => {
   tick()
   clockTimer = setInterval(tick, 1000)
@@ -284,10 +317,19 @@ onBeforeUnmount(() => {
 .topbar-left, .topbar-right { display: flex; align-items: center; gap: 12px; }
 .burger { padding: 6px; }
 .brand { font-size: 17px; font-weight: 700; color: #1b5e20; letter-spacing: 1px; }
+.brand-ico { width: 22px; height: 22px; vertical-align: -5px; margin-right: 6px; }
 .role-tag { background: linear-gradient(135deg, #43a047, #1b5e20); border: none; }
 .clock { font-size: 13px; color: #5c6f60; font-variant-numeric: tabular-nums; }
 .bell { cursor: pointer; }
 .bell.shake :deep(.el-button) { animation: bellShake .8s; }
+.bell.overtime :deep(.el-badge__content) {
+  background: #f56c6c;
+  animation: overtimePulse 1.2s ease-in-out infinite;
+}
+@keyframes overtimePulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245,108,108,.55); }
+  50% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(245,108,108,0); }
+}
 @keyframes bellShake {
   0%, 100% { transform: rotate(0); }
   20% { transform: rotate(14deg); }
@@ -322,6 +364,7 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #1b5e20, #2e7d32);
 }
 .drawer-brand { color: #fff; font-size: 17px; font-weight: 700; letter-spacing: 2px; }
+.drawer-brand .brand-ico { margin-right: 8px; }
 .drawer-close { color: #fff; }
 .drawer-user {
   display: flex; align-items: center; gap: 12px;

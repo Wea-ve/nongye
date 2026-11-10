@@ -9,7 +9,7 @@
         <el-select v-model="batchId" placeholder="按批次筛选" clearable style="width: 300px" @change="filter">
           <el-option v-for="b in batches" :key="b.id" :label="`${b.batchNo} · ${b.cropName}`" :value="b.id" />
         </el-select>
-        <el-button @click="$router.push('/app/farmer/batch')">前往批次管理</el-button>
+        <el-button @click="$router.push('/farmer/batch')">前往批次管理</el-button>
       </div>
 
       <el-table :data="filteredList" v-loading="loading">
@@ -35,26 +35,27 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import http from '../../api/http'
 import { logTypeMap } from '../../utils'
+import type { CropBatch, FarmerLogsData, FarmingLog } from '../../types'
 
-const logs = ref([])
-const batches = ref([])
-const batchId = ref(null)
-const loading = ref(false)
+const logs = ref<FarmingLog[]>([])
+const batches = ref<CropBatch[]>([])
+const batchId = ref<number | null>(null)
+const loading = ref<boolean>(false)
 
-const filteredList = computed(() =>
+const filteredList = computed<FarmingLog[]>(() =>
   batchId.value ? logs.value.filter(l => l.batchId === batchId.value) : logs.value
 )
 
-const filter = () => { /* computed 自动过滤 */ }
+const filter = (): void => { /* computed 自动过滤 */ }
 
 onMounted(async () => {
   loading.value = true
   try {
-    const d = await http.get('/api/farmer/logs')
+    const d = await http.get<FarmerLogsData>('/api/farmer/logs')
     logs.value = d.logs
     batches.value = d.batches
   } finally { loading.value = false }

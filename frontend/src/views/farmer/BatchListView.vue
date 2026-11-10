@@ -93,35 +93,45 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { batchStatusMap, fmtDate } from '../../utils'
+import type { CropBatch } from '../../types'
 
-const list = ref([])
-const keyword = ref('')
-const loading = ref(false)
-const saving = ref(false)
+const list = ref<CropBatch[]>([])
+const keyword = ref<string>('')
+const loading = ref<boolean>(false)
+const saving = ref<boolean>(false)
 
-async function load() {
+async function load(): Promise<void> {
   loading.value = true
   try {
-    list.value = await http.get('/api/farmer/batches', { params: { keyword: keyword.value || undefined } })
+    list.value = await http.get<CropBatch[]>('/api/farmer/batches', { params: { keyword: keyword.value || undefined } })
   } finally { loading.value = false }
 }
 
 // 新增批次
-const addVisible = ref(false)
+const addVisible = ref<boolean>(false)
 const addForm = reactive({ cropName: '', variety: '', landLocation: '', plantDate: '', expectHarvestDate: '' })
-const openAdd = () => {
+const openAdd = (): void => {
   Object.assign(addForm, { cropName: '', variety: '', landLocation: '', plantDate: '', expectHarvestDate: '' })
   addVisible.value = true
 }
-async function saveAdd() {
-  if (!addForm.cropName.trim()) return ElMessage.warning('请填写作物名称')
-  if (!addForm.landLocation.trim()) return ElMessage.warning('请填写产地地块')
-  if (!addForm.plantDate) return ElMessage.warning('请选择播种日期')
+async function saveAdd(): Promise<void> {
+  if (!addForm.cropName.trim()) {
+    ElMessage.warning('请填写作物名称')
+    return
+  }
+  if (!addForm.landLocation.trim()) {
+    ElMessage.warning('请填写产地地块')
+    return
+  }
+  if (!addForm.plantDate) {
+    ElMessage.warning('请选择播种日期')
+    return
+  }
   saving.value = true
   try {
     await http.post('/api/farmer/batches', addForm)
@@ -132,21 +142,27 @@ async function saveAdd() {
 }
 
 // 采收登记
-const harvestVisible = ref(false)
-const harvestBatch = ref(null)
-const harvestForm = reactive({ actualHarvestDate: '', harvestWeight: null })
-const openHarvest = (row) => {
+const harvestVisible = ref<boolean>(false)
+const harvestBatch = ref<CropBatch | null>(null)
+const harvestForm = reactive<{ actualHarvestDate: string; harvestWeight: number | null }>({ actualHarvestDate: '', harvestWeight: null })
+const openHarvest = (row: CropBatch): void => {
   harvestBatch.value = row
   harvestForm.actualHarvestDate = new Date().toISOString().slice(0, 10)
   harvestForm.harvestWeight = null
   harvestVisible.value = true
 }
-async function saveHarvest() {
-  if (!harvestForm.actualHarvestDate) return ElMessage.warning('请选择采收日期')
-  if (!harvestForm.harvestWeight) return ElMessage.warning('请填写采收重量')
+async function saveHarvest(): Promise<void> {
+  if (!harvestForm.actualHarvestDate) {
+    ElMessage.warning('请选择采收日期')
+    return
+  }
+  if (!harvestForm.harvestWeight) {
+    ElMessage.warning('请填写采收重量')
+    return
+  }
   saving.value = true
   try {
-    const batch = await http.post(`/api/farmer/batches/${harvestBatch.value.id}/harvest`, harvestForm)
+    const batch = await http.post<CropBatch>(`/api/farmer/batches/${harvestBatch.value!.id}/harvest`, harvestForm)
     ElMessage.success(`采收完成，溯源码：${batch.traceCode}`)
     harvestVisible.value = false
     load()
@@ -154,9 +170,9 @@ async function saveHarvest() {
 }
 
 // 溯源码弹窗
-const qrVisible = ref(false)
-const qrBatch = ref(null)
-const showQr = (row) => {
+const qrVisible = ref<boolean>(false)
+const qrBatch = ref<CropBatch | null>(null)
+const showQr = (row: CropBatch): void => {
   qrBatch.value = row
   qrVisible.value = true
 }

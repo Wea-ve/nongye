@@ -89,10 +89,21 @@ public class WebConfig implements WebMvcConfigurer {
                                             jakarta.servlet.http.HttpServletResponse response,
                                             jakarta.servlet.FilterChain chain) throws jakarta.servlet.ServletException, java.io.IOException {
                 String uri = request.getRequestURI();
+                // 角色根路径带尾斜杠（/admin/、/farmer/、/dealer/）交给 LegacyRedirectController 处理，
+                // 否则会被拼成 /app/admin/ 等 SPA 中不存在的路由
+                boolean roleRootSlash = "/admin/".equals(uri) || "/farmer/".equals(uri) || "/dealer/".equals(uri);
+                // 导出接口返回文件流，不能被当成旧页面重定向
                 boolean legacyPage = "GET".equalsIgnoreCase(request.getMethod())
+                        && !uri.endsWith("/export")
+                        && !roleRootSlash
                         && (uri.startsWith("/farmer/") || uri.startsWith("/dealer/") || uri.startsWith("/admin/")
                             || uri.startsWith("/profile") || uri.startsWith("/password"));
                 if (legacyPage) {
+                    // 个人中心旧页在 SPA 中无对应路由，统一回登录页
+                    if (uri.startsWith("/profile") || uri.startsWith("/password")) {
+                        response.sendRedirect("/app/login");
+                        return;
+                    }
                     String query = request.getQueryString();
                     response.sendRedirect("/app" + uri + (query == null ? "" : "?" + query));
                     return;

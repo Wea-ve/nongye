@@ -3,11 +3,11 @@
     <!-- 顶部标题栏 -->
     <header class="bs-header">
       <div class="hd-side left">
-        <span class="hd-chip">AI WEB 赛道 · 农产品全链路溯源平台</span>
+        <span class="hd-chip">AI WEB 赛道 · 可信溯源决策平台</span>
       </div>
       <div class="hd-title">
         <i class="hd-line"></i>
-        <h1>🌾 农芯溯源 · 全链路数据大屏</h1>
+        <h1><img class="hd-logo" src="../../assets/logo-icon.svg" alt="安溯·知源" />安溯·知源 · 全链路数据大屏</h1>
         <i class="hd-line"></i>
       </div>
       <div class="hd-side right">
@@ -66,45 +66,71 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import type { EChartsOption } from 'echarts'
 import http from '../../api/http'
 import ChartBox from '../../components/ChartBox.vue'
 import { complaintStatusMap } from '../../utils'
+import type { BigScreenData, CountRow, ScanLog, StatRow } from '../../types'
 
 const router = useRouter()
 
 /* ============ 数据加载（30s 自动刷新） ============ */
-const d = ref({})
-const recentScans = computed(() => d.value.recentScans || [])
+const d = ref<BigScreenData>({
+  batchTotal: 0,
+  farmerCount: 0,
+  dealerCount: 0,
+  scanToday: 0,
+  scanTotal: 0,
+  pendingCount: 0,
+  traceTotal: 0,
+  reportTotal: 0,
+  qualifiedRate: 100,
+  batchStatus: {},
+  scan7days: [],
+  trace7days: [],
+  cropStats: [],
+  complaintStatus: [],
+  hotBatches: [],
+  recentScans: []
+})
+const recentScans = computed<ScanLog[]>(() => d.value.recentScans || [])
 
-async function load() {
+async function load(): Promise<void> {
   try {
-    d.value = await http.get('/api/admin/bigscreen')
+    d.value = await http.get<BigScreenData>('/api/admin/bigscreen')
   } catch { /* 拦截器已提示 */ }
 }
-let refreshTimer = null
+let refreshTimer: number | undefined
 
 /* ============ 实时时钟 ============ */
-const clock = ref('')
-let clockTimer = null
-function tick() {
+const clock = ref<string>('')
+let clockTimer: number | undefined
+function tick(): void {
   const t = new Date()
-  const p = (n) => String(n).padStart(2, '0')
+  const p = (n: number): string => String(n).padStart(2, '0')
   clock.value = `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`
 }
 
 /* ============ 全屏 ============ */
-const isFull = ref(false)
-function toggleFull() {
+const isFull = ref<boolean>(false)
+function toggleFull(): void {
   if (document.fullscreenElement) document.exitFullscreen()
   else document.documentElement.requestFullscreen?.()
 }
-function onFullChange() { isFull.value = !!document.fullscreenElement }
+function onFullChange(): void { isFull.value = !!document.fullscreenElement }
 
 /* ============ KPI 数字滚动动画 ============ */
-const KPI_DEF = [
+type KpiKey = 'batchTotal' | 'farmerCount' | 'dealerCount' | 'scanToday' | 'scanTotal' | 'pendingCount'
+interface KpiDef {
+  key: KpiKey
+  label: string
+  icon: string
+  color: string
+}
+const KPI_DEF: KpiDef[] = [
   { key: 'batchTotal', label: '种植批次', icon: '🌾', color: '#7cffb2' },
   { key: 'farmerCount', label: '入驻农户', icon: '🧑‍🌾', color: '#38bdf8' },
   { key: 'dealerCount', label: '经销商家', icon: '🚚', color: '#ffc53d' },
@@ -112,19 +138,19 @@ const KPI_DEF = [
   { key: 'scanTotal', label: '累计扫码', icon: '📊', color: '#00e5c3' },
   { key: 'pendingCount', label: '待处理投诉', icon: '📨', color: '#ff6b6b' }
 ]
-const show = reactive(Object.fromEntries(KPI_DEF.map(k => [k.key, 0])))
-const anims = {}
-function animateTo(key, target) {
-  target = Number(target) || 0
+const show = reactive<Record<string, number>>(Object.fromEntries(KPI_DEF.map(k => [k.key, 0])))
+const anims: Record<string, number> = {}
+function animateTo(key: KpiKey, target: number | undefined): void {
+  const to = Number(target) || 0
   cancelAnimationFrame(anims[key])
   const from = Number(show[key]) || 0
-  if (from === target) { show[key] = target; return }
+  if (from === to) { show[key] = to; return }
   const start = performance.now()
   const dur = 900
-  const step = (now) => {
+  const step = (now: number): void => {
     const p = Math.min((now - start) / dur, 1)
     const eased = 1 - Math.pow(1 - p, 3)
-    show[key] = Math.round(from + (target - from) * eased)
+    show[key] = Math.round(from + (to - from) * eased)
     if (p < 1) anims[key] = requestAnimationFrame(step)
   }
   anims[key] = requestAnimationFrame(step)
@@ -138,7 +164,7 @@ const AXIS = { axisLine: { lineStyle: { color: 'rgba(126,164,191,.35)' } }, axis
 const SPLIT = { splitLine: { lineStyle: { color: 'rgba(126,164,191,.12)' } } }
 
 /* 近 7 天扫码量（面积折线） */
-const scanLine = computed(() => {
+const scanLine = computed<EChartsOption>(() => {
   const rows = d.value.scan7days || []
   return {
     tooltip: { trigger: 'axis' },
@@ -161,7 +187,7 @@ const scanLine = computed(() => {
 })
 
 /* 作物产量玫瑰图 */
-const cropRose = computed(() => {
+const cropRose = computed<EChartsOption>(() => {
   const rows = (d.value.cropStats || []).map(r => ({ name: r.crop_name, value: Number(r.total || 0) }))
   return {
     tooltip: { trigger: 'item', formatter: '{b}: {c} 斤 ({d}%)' },
@@ -177,7 +203,7 @@ const cropRose = computed(() => {
 })
 
 /* 检测合格率仪表盘 */
-const gauge = computed(() => {
+const gauge = computed<EChartsOption>(() => {
   const rate = Number(d.value.qualifiedRate ?? 100)
   return {
     series: [{
@@ -198,7 +224,7 @@ const gauge = computed(() => {
 })
 
 /* 热门批次 TOP5 横向条形 */
-const hotBar = computed(() => {
+const hotBar = computed<EChartsOption>(() => {
   const rows = (d.value.hotBatches || []).slice(0, 5)
   const sorted = [...rows].reverse()
   return {
@@ -223,12 +249,12 @@ const hotBar = computed(() => {
 })
 
 /* 批次状态 + 投诉状态 双环图 */
-const batchStatusMap = { PLANTING: '种植中', HARVESTED: '已采收', SOLD: '已售罄' }
-const statusRing = computed(() => {
+const batchStatusMap: Record<string, string> = { PLANTING: '种植中', HARVESTED: '已采收', SOLD: '已售罄' }
+const statusRing = computed<EChartsOption>(() => {
   const batchRows = Object.entries(d.value.batchStatus || {})
     .map(([k, v]) => ({ name: batchStatusMap[k] || k, value: Number(v) }))
   const complaintRows = (d.value.complaintStatus || [])
-    .map(r => ({ name: complaintStatusMap?.[r.status]?.text || r.status, value: Number(r.cnt) }))
+    .map(r => ({ name: complaintStatusMap[r.status || '']?.text || r.status, value: Number(r.cnt) }))
   return {
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
     legend: { bottom: 4, textStyle: { color: '#7ea4bf' }, itemWidth: 12, itemHeight: 8 },
@@ -256,12 +282,12 @@ const statusRing = computed(() => {
 })
 
 /* ============ 工具 ============ */
-function fmtTime(t) {
+function fmtTime(t: string | null | undefined): string {
   if (!t) return ''
   const s = String(t).replace('T', ' ')
   return s.length >= 16 ? s.slice(11, 16) : s
 }
-function onKey(e) { if (e.key === 'Escape' && !document.fullscreenElement) router.push('/admin/dashboard') }
+function onKey(e: KeyboardEvent): void { if (e.key === 'Escape' && !document.fullscreenElement) router.push('/admin/dashboard') }
 
 onMounted(() => {
   tick()
@@ -301,6 +327,7 @@ onBeforeUnmount(() => {
   background: rgba(0, 229, 195, .06);
 }
 .hd-title { display: flex; align-items: center; gap: 18px; }
+.hd-logo { width: 34px; height: 34px; vertical-align: -8px; margin-right: 10px; filter: drop-shadow(0 0 8px rgba(61, 214, 140, .45)); }
 .hd-title h1 {
   margin: 0; font-size: 24px; letter-spacing: 4px; white-space: nowrap;
   background: linear-gradient(90deg, #7cffb2, #00e5c3 45%, #38bdf8);

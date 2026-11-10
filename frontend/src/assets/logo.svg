@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 72">
+  <defs>
+    <linearGradient id="vt-shield2" x1="14" y1="4" x2="50" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3DD68C"/>
+      <stop offset=".55" stop-color="#1FA45B"/>
+      <stop offset="1" stop-color="#0B7A43"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(8,8)">
+    <path d="M32 3.5 55 11.5 V30.5 C55 45.5 46 56 32 60.5 18 56 9 45.5 9 30.5 V11.5 Z" fill="url(#vt-shield2)"/>
+    <path d="M18.5 33.5 28 43.5 42.5 25" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M42.5 25 C41.5 15.8 47.8 10.6 54 11.8 C53.6 19.6 49.2 24.9 42.5 25 Z" fill="#ffffff"/>
+  </g>
+  <text x="78" y="38" font-family="'PingFang SC','Microsoft YaHei','Source Han Sans SC',sans-serif"
+        font-size="27" font-weight="700" fill="#0E5B33" letter-spacing="3">安溯·知源</text>
+  <text x="79" y="60" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif"
+        font-size="12" font-weight="600" fill="#5E7C68" letter-spacing="2.5">VERITRACE · AI 可信溯源决策平台</text>
+</svg>

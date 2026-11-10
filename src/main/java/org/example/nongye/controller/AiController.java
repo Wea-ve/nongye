@@ -7,12 +7,16 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import org.example.nongye.entity.*;
 import org.example.nongye.mapper.*;
+import jakarta.servlet.http.HttpSession;
 import org.example.nongye.service.AgentService;
+import org.example.nongye.service.AiSafetyService;
+import org.example.nongye.service.ConsumerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,6 +45,10 @@ public class AiController {
     private DetectionReportMapper reportMapper;
     @Autowired
     private AgentService agentService;
+    @Autowired
+    private AiSafetyService safetyService;
+    @Autowired
+    private ConsumerService consumerService;
 
     @Value("${ai.api-key:}")
     private String apiKey;
@@ -55,53 +63,220 @@ public class AiController {
     /**
      * POST /api/ai/chat
      * body: {"batchId": 1, "question": "打了几次农药？", "sessionId": "xxx", "image": "data:image/jpeg;base64,..."}
-     * 返回：{"reply": "...", "tools": [{"label": "检测报告", "summary": "查询了 2 份检测报告"}]}
+     * 返回：{"reply": "...", "tools": [...], "sources": [{"type","label","detail"}]}
      */
     @PostMapping("/chat")
-    public Map<String, Object> chat(@RequestBody Map<String, Object> body) {
-        Map<String, Object> result = new HashMap<>();
+    public Map<String, Object> chat(@RequestBody Map<String, Object> body, HttpSession session) {
         Long batchId = body.get("batchId") != null ? Long.valueOf(body.get("batchId").toString()) : null;
         String question = body.get("question") != null ? body.get("question").toString().trim() : "";
         String image = body.get("image") != null ? body.get("image").toString().trim() : "";
         String sessionId = body.get("sessionId") != null ? body.get("sessionId").toString() : "default";
 
-        if (question.isEmpty() || batchId == null) {
+        Long consumerId = (Long) session.getAttribute("consumerId");
+
+        Map<String, Object> result = new HashMap<>();
+        if (question.isEmpty()) {
             result.put("reply", "请输入您的问题");
             result.put("tools", new ArrayList<>());
+            result.put("sources", new ArrayList<>());
             return result;
         }
 
-        CropBatch batch = batchMapper.selectById(batchId);
-        if (batch == null) {
-            result.put("reply", "批次信息不存在");
-            result.put("tools", new ArrayList<>());
-            return result;
+        CropBatch batch = null;
+        if (batchId != null) {
+            batch = batchMapper.selectById(batchId);
+            if (batch == null) {
+                result.put("reply", "批次信息不存在");
+                result.put("tools", new ArrayList<>());
+                result.put("sources", new ArrayList<>());
+                return result;
+            }
         }
 
         try {
-            if (!image.isEmpty()) {
-                // 多模态：图片 + 问题 + 批次上下文 → VL 模型
-                result.put("reply", callVlApi(batch, question, image));
-                result.put("tools", new ArrayList<>());
-            } else if (apiKey != null && !apiKey.isEmpty()) {
-                // Agent 模式：工具调用 + RAG + 多轮
-                Map<String, Object> agentResult = agentService.chat(batchId, sessionId, question);
-                result.put("reply", agentResult.get("reply"));
-                result.put("tools", agentResult.get("tools"));
-            } else {
-                // 无 Key 兜底：模拟回复
-                List<FarmingLog> logs = farmingLogMapper.selectByBatchId(batchId);
-                List<TraceRecord> records = traceRecordMapper.selectByBatchId(batchId);
-                List<DetectionReport> reports = reportMapper.selectByBatchId(batchId);
-                result.put("reply", mockReply(question, batch, logs, records, reports));
-                result.put("tools", new ArrayList<>());
-            }
+            return answer(batch, question, image, sessionId, null, consumerId);
         } catch (Exception e) {
             log.error("AI 问答处理失败", e);
             result.put("reply", "AI 服务暂时不可用，请稍后再试");
             result.put("tools", new ArrayList<>());
+            result.put("sources", new ArrayList<>());
+            return result;
         }
-        return result;
+    }
+
+    /**
+     * POST /api/ai/chat/stream
+     * SSE 推送：{"type":"step","label","summary"} → {"type":"reply","reply","tools","sources"}
+     * 前端据此实时展示"正在查检测报告…"等步骤，最后拿到完整回答与依据。
+     */
+    @PostMapping(value = "/chat/stream", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter chatStream(@RequestBody Map<String, Object> body, HttpSession session) {
+        SseEmitter emitter = new SseEmitter(180000L);
+        Long batchId = body.get("batchId") != null ? Long.valueOf(body.get("batchId").toString()) : null;
+        String question = body.get("question") != null ? body.get("question").toString().trim() : "";
+        String image = body.get("image") != null ? body.get("image").toString().trim() : "";
+        String sessionId = body.get("sessionId") != null ? body.get("sessionId").toString() : "default";
+
+        Long consumerId = (Long) session.getAttribute("consumerId");
+        final Long finalBatchId = batchId;
+
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                if (question.isEmpty()) {
+                    sendEvent(emitter, Map.of("type", "reply", "reply", "请输入您的问题",
+                            "tools", List.of(), "sources", List.of()));
+                    emitter.complete();
+                    return;
+                }
+                CropBatch batch = null;
+                if (finalBatchId != null) {
+                    batch = batchMapper.selectById(finalBatchId);
+                    if (batch == null) {
+                        sendEvent(emitter, Map.of("type", "reply", "reply", "批次信息不存在",
+                                "tools", List.of(), "sources", List.of()));
+                        emitter.complete();
+                        return;
+                    }
+                }
+                sendEvent(emitter, Map.of("type", "step", "label", "理解问题", "summary", "正在分析您的问题"));
+                if (!image.isEmpty() && apiKey != null && !apiKey.isEmpty()) {
+                    sendEvent(emitter, Map.of("type", "step", "label", "图片识别", "summary", "正在识别您上传的照片"));
+                }
+                CropBatch finalBatch = batch;
+                Map<String, Object> result = answer(finalBatch, question, image, sessionId,
+                        new AgentService.ToolSink() {
+                            @Override
+                            public void onTool(String label, String summary) {
+                                sendEvent(emitter, Map.of("type", "step", "label", label, "summary", summary));
+                            }
+
+                            @Override
+                            public void onToken(String delta) {
+                                sendEvent(emitter, Map.of("type", "delta", "delta", delta));
+                            }
+                        }, consumerId);
+                sendEvent(emitter, Map.of("type", "reply",
+                        "reply", result.get("reply"),
+                        "tools", result.getOrDefault("tools", List.of()),
+                        "sources", result.getOrDefault("sources", List.of())));
+                emitter.complete();
+            } catch (Exception e) {
+                log.error("AI 流式问答失败", e);
+                try {
+                    sendEvent(emitter, Map.of("type", "reply", "reply", "AI 服务暂时不可用，请稍后再试",
+                            "tools", List.of(), "sources", List.of()));
+                } catch (Exception ignored) {
+                    // 连接已断开
+                }
+                emitter.complete();
+            }
+        });
+        return emitter;
+    }
+
+    /**
+     * POST /api/ai/health-report
+     * body: {"batchId": 1}
+     * 返回：{"report": "...", "trust": {...}, "generatedAt": "..."}
+     * 事实基础 = TrustScoreService 确定性评分（可信指数），模型仅做可读化转写；出口统一过安全过滤。
+     */
+    @PostMapping("/health-report")
+    public Map<String, Object> healthReport(@RequestBody Map<String, Object> body) {
+        Long batchId = body.get("batchId") != null ? Long.valueOf(body.get("batchId").toString()) : null;
+        Map<String, Object> result = new HashMap<>();
+        if (batchId == null) {
+            result.put("report", "缺少批次信息");
+            return result;
+        }
+        try {
+            return agentService.healthReport(batchId);
+        } catch (Exception e) {
+            log.error("体检报告生成失败", e);
+            result.put("report", "AI 服务暂时不可用，请稍后再试");
+            return result;
+        }
+    }
+
+    /** 统一的回答生成：有 Key 时 Agent（可选融合图片识别），无 Key 时按批次数据兜底 */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> answer(CropBatch batch, String question, String image,
+                                       String sessionId, AgentService.ToolSink sink, Long consumerId) {
+        Map<String, Object> out = new HashMap<>();
+        List<Map<String, Object>> sources = new ArrayList<>();
+
+        // 输入安全校验：提示注入、超长、造假/规避检测请求
+        String blocked = safetyService.checkInput(question);
+        if (blocked != null) {
+            out.put("reply", blocked);
+            out.put("tools", new ArrayList<>());
+            out.put("sources", sources);
+            return out;
+        }
+
+        if (apiKey != null && !apiKey.isEmpty()) {
+            String enriched = question;
+            if (batch != null && !image.isEmpty()) {
+                // 多模态融合：先用 VL 识别图片，再把识别结果作为上下文交给 Agent 查批次数据/知识库
+                String vision = callVlApi(batch, question, image);
+                enriched = question + "\n\n【图片识别结果（供参考）】\n" + vision;
+                sources.add(sourceItem("image", "图片识别", abbreviate(vision, 60)));
+            }
+            Long batchId = batch != null ? batch.getId() : null;
+            Map<String, Object> agentResult = agentService.chat(batchId, sessionId, enriched, consumerId, sink);
+            sources.addAll((List<Map<String, Object>>) agentResult.getOrDefault("sources", List.of()));
+            out.put("reply", safetyService.guardOutput(String.valueOf(agentResult.get("reply"))));
+            out.put("tools", agentResult.get("tools"));
+            out.put("sources", sources);
+            return out;
+        }
+
+        // 无 Key：按批次数据生成兜底回答
+        if (batch == null) {
+            out.put("reply", "请先关联一个批次再提问，或者描述您对哪个商品有疑问。");
+            out.put("tools", new ArrayList<>());
+            out.put("sources", sources);
+            return out;
+        }
+        List<FarmingLog> logs = farmingLogMapper.selectByBatchId(batch.getId());
+        List<TraceRecord> records = traceRecordMapper.selectByBatchId(batch.getId());
+        List<DetectionReport> reports = reportMapper.selectByBatchId(batch.getId());
+        String reply = mockReply(question, batch, logs, records, reports);
+        if (!image.isEmpty()) {
+            reply = "（图片识别需配置 AI 服务，以下按文字问题回答）\n\n" + reply;
+        }
+        sources.add(sourceItem("data", "批次信息", batch.getCropName() + "（" + batch.getBatchNo() + "）"));
+        sources.add(sourceItem("record", "农事记录", logs.size() + " 条"));
+        if (!reports.isEmpty()) {
+            sources.add(sourceItem("report", "检测报告",
+                    reports.size() + " 份 · 最新 " + reports.get(0).getResult()));
+        }
+        sources.add(sourceItem("trace", "流转记录", records.size() + " 条"));
+        out.put("reply", safetyService.guardOutput(reply));
+        out.put("tools", new ArrayList<>());
+        out.put("sources", sources);
+        return out;
+    }
+
+    private Map<String, Object> sourceItem(String type, String label, String detail) {
+        Map<String, Object> item = new HashMap<>();
+        item.put("type", type);
+        item.put("label", label);
+        item.put("detail", detail);
+        return item;
+    }
+
+    private String abbreviate(String text, int max) {
+        if (text == null) return "";
+        String oneLine = text.replace("\n", " ").trim();
+        return oneLine.length() <= max ? oneLine : oneLine.substring(0, max) + "…";
+    }
+
+    private void sendEvent(SseEmitter emitter, Map<String, Object> payload) {
+        try {
+            emitter.send(SseEmitter.event().data(payload));
+        } catch (Exception e) {
+            // 客户端断开时忽略，避免刷日志
+        }
     }
 
     /** 多模态：调通义千问 VL（图片以 data URL 传入，OpenAI 兼容格式） */
@@ -113,7 +288,8 @@ public class AiController {
         userContent.add(new JSONObject().set("type", "text")
                 .set("text", "消费者在溯源页上传了一张照片并提问：\n" + question
                         + "\n\n" + context
-                        + "\n请结合图片内容回答（若是农药/肥料包装，说明该药剂用途、安全间隔期与注意事项；若是蔬菜照片，描述状态并给出判断或建议）。用中文简洁回答，控制在 300 字以内。"));
+                        + "\n请先客观描述图片中可见的内容（作物/包装/标签文字），再针对问题给出判断或建议。"
+                        + "看不清或无法确认的地方必须明说，不要猜测。用中文分点回答，控制在 200 字以内。"));
         userContent.add(new JSONObject().set("type", "image_url")
                 .set("image_url", new JSONObject().set("url", imageDataUrl)));
 
@@ -177,7 +353,12 @@ public class AiController {
         // 农药相关
         if (q.contains("农药") || q.contains("打药") || q.contains("残留")) {
             long count = logs.stream().filter(l -> "PESTICIDE".equals(l.getLogType())).count();
-            if (count == 0) return "该批次没有打药记录，属于生态种植。";
+            if (count == 0) {
+                return "在该批次已登记的农事记录中，暂未查到打药记录。"
+                        + "由于记录可能不完整，不能据此判定为“生态种植”或“无农药”；"
+                        + (reports.isEmpty() ? "该批次也暂无检测报告，建议以收到的农残检测结果为准。"
+                                             : "可参考检测报告结论：" + reports.get(0).getResult() + "。");
+            }
             StringBuilder sb = new StringBuilder("该批次共打药 " + count + " 次：\n");
             logs.stream().filter(l -> "PESTICIDE".equals(l.getLogType())).forEach(l -> {
                 sb.append("• ").append(l.getLogDate());

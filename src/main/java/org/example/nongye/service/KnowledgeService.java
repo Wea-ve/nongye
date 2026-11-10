@@ -41,6 +41,10 @@ public class KnowledgeService {
     @Value("${ai.embedding-model:text-embedding-v3}")
     private String embeddingModel;
 
+    /** 最低相关度门槛：低于该余弦相似度的片段不返回，避免"答非所问" */
+    @Value("${ai.rag-min-score:0.32}")
+    private double minScore;
+
     /** 文档向量内存缓存：id → double[]，避免每次请求重复计算/读库 */
     private volatile Map<Long, double[]> vectorCache = new HashMap<>();
     /** 向量缓存对应的文档数量，用于检测知识库变化后自动重建 */
@@ -67,8 +71,11 @@ public class KnowledgeService {
                 for (KnowledgeDoc doc : docs) {
                     double[] dv = vectorCache.get(doc.getId());
                     if (dv == null) continue;
+                    double score = cosine(qv, dv);
+                    // 相关度门槛：不达标的知识不返回，避免模型拿无关内容编答案
+                    if (score < minScore) continue;
                     Map<String, Object> item = toItem(doc);
-                    item.put("score", cosine(qv, dv));
+                    item.put("score", Math.round(score * 1000) / 1000.0);
                     scored.add(item);
                 }
                 scored.sort((a, b) -> Double.compare((Double) b.get("score"), (Double) a.get("score")));
@@ -196,9 +203,12 @@ public class KnowledgeService {
 
     private Map<String, Object> toItem(KnowledgeDoc doc) {
         Map<String, Object> item = new HashMap<>();
+        item.put("id", doc.getId());
         item.put("title", doc.getTitle());
         item.put("category", doc.getCategory());
         item.put("content", doc.getContent());
+        item.put("source", doc.getSource());
+        item.put("docVersion", doc.getDocVersion());
         return item;
     }
 }

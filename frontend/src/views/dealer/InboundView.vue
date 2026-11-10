@@ -37,22 +37,26 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { batchStatusMap } from '../../utils'
+import type { CropBatch, DealerTraceData } from '../../types'
 
-const traceCode = ref('')
-const batch = ref(null)
-const searched = ref(false)
-const quantity = ref(null)
-const saving = ref(false)
+const traceCode = ref<string>('')
+const batch = ref<CropBatch | null>(null)
+const searched = ref<boolean>(false)
+const quantity = ref<number | null>(null)
+const saving = ref<boolean>(false)
 
-async function query() {
+async function query(): Promise<void> {
   const code = traceCode.value.trim()
-  if (!code) return ElMessage.warning('请输入溯源码')
-  const d = await http.get('/api/dealer/trace', { params: { traceCode: code } })
+  if (!code) {
+    ElMessage.warning('请输入溯源码')
+    return
+  }
+  const d = await http.get<DealerTraceData>('/api/dealer/trace', { params: { traceCode: code } })
   searched.value = true
   if (d.batch) {
     batch.value = d.batch
@@ -62,11 +66,14 @@ async function query() {
   }
 }
 
-async function submit() {
-  if (!quantity.value) return ElMessage.warning('请填写入库数量')
+async function submit(): Promise<void> {
+  if (!quantity.value) {
+    ElMessage.warning('请填写入库数量')
+    return
+  }
   saving.value = true
   try {
-    await http.post('/api/dealer/inbound', { batchId: batch.value.id, quantity: quantity.value })
+    await http.post('/api/dealer/inbound', { batchId: batch.value!.id, quantity: quantity.value })
     ElMessage.success('入库成功，已写入流转记录')
     batch.value = null
     traceCode.value = ''

@@ -17,16 +17,17 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import http from '../../api/http'
 import { fmtTime } from '../../utils'
+import type { TraceRecord } from '../../types'
 
-const records = ref([])
-const loading = ref(false)
+const records = ref<TraceRecord[]>([])
+const loading = ref<boolean>(false)
 
 onMounted(async () => {
   loading.value = true
-  try { records.value = await http.get('/api/dealer/records/outbound') } finally { loading.value = false }
+  try { records.value = await http.get<TraceRecord[]>('/api/dealer/records/outbound') } finally { loading.value = false }
 })
 </script>

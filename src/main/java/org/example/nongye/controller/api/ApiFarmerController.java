@@ -8,10 +8,14 @@ import org.example.nongye.entity.DetectionReport;
 import org.example.nongye.entity.FarmingLog;
 import org.example.nongye.entity.SysUser;
 import org.example.nongye.entity.TraceRecord;
+import org.example.nongye.entity.TrustPromise;
 import org.example.nongye.mapper.CropBatchMapper;
 import org.example.nongye.mapper.DetectionReportMapper;
+import org.example.nongye.mapper.FarmerKpiMapper;
 import org.example.nongye.mapper.FarmingLogMapper;
 import org.example.nongye.mapper.TraceRecordMapper;
+import org.example.nongye.mapper.TrustPromiseMapper;
+import org.example.nongye.service.TrustPromiseService;
 import org.example.nongye.util.LanIpUtil;
 import org.example.nongye.util.QRCodeUtil;
 import org.slf4j.Logger;
@@ -50,6 +54,12 @@ public class ApiFarmerController {
     private TraceRecordMapper traceRecordMapper;
     @Autowired
     private DetectionReportMapper reportMapper;
+    @Autowired
+    private TrustPromiseMapper promiseMapper;
+    @Autowired
+    private TrustPromiseService trustPromiseService;
+    @Autowired
+    private FarmerKpiMapper kpiMapper;
 
     @Value("${upload.path}")
     private String uploadPath;
@@ -103,6 +113,17 @@ public class ApiFarmerController {
                 .map(e -> Map.of("name", e.getKey(), "value", e.getValue()))
                 .toList());
         data.put("recentBatches", batches.stream().limit(5).toList());
+
+        // 信任经营 KPI：信任者数 / 复购率 / 售后闭环时长
+        data.put("followers", kpiMapper.countFollowers(user.getId()));
+        Map<String, Object> rep = kpiMapper.repurchaseStats(user.getId());
+        long total = rep == null || rep.get("totalCnt") == null ? 0 : ((Number) rep.get("totalCnt")).longValue();
+        long repeat = rep == null || rep.get("repeatCnt") == null ? 0 : ((Number) rep.get("repeatCnt")).longValue();
+        data.put("repurchaseRate", total == 0 ? 0 : Math.round(repeat * 100.0 / total));
+        data.put("repeatConsumers", repeat);
+        data.put("subscribedConsumers", total);
+        data.put("avgCloseHours", Math.round(kpiMapper.avgFirstReplyHours(user.getId()) * 10) / 10.0);
+        data.put("promiseCount", promiseMapper.selectByFarmer(user.getId()).size());
         return ApiResult.ok(data);
     }
 
@@ -285,6 +306,53 @@ public class ApiFarmerController {
     public ApiResult<List<TraceRecord>> sales(HttpSession session) {
         SysUser user = current(session);
         return ApiResult.ok(traceRecordMapper.selectSalesByFarmer(user.getId()));
+    }
+
+    // ==================== 信任承诺（事前公开承诺 + 事后兑现） ====================
+
+    /** 承诺类型字典 + 本农户全部承诺 */
+    @GetMapping("/promises")
+    public ApiResult<Map<String, Object>> promises(HttpSession session) {
+        SysUser user = current(session);
+        Map<String, Object> data = new HashMap<>();
+        data.put("promises", promiseMapper.selectByFarmer(user.getId()));
+        data.put("batches", batchMapper.selectByFarmerId(user.getId()));
+        data.put("types", List.of(
+                Map.of("type", "FRESH", "label", "新鲜承诺", "hint", "如 24h，表示采收后 24 小时内送达经销商"),
+                Map.of("type", "HARVEST_DATE", "label", "采收期承诺", "hint", "如 约定采收日，前后 3 天内视为兑现"),
+                Map.of("type", "QUALITY", "label", "品质承诺", "hint", "如 无农残、不打蜡，可附检测报告")
+        ));
+        return ApiResult.ok(data);
+    }
+
+    /** 新增承诺：只能给自己名下的批次设置 */
+    @PostMapping("/promises")
+    public ApiResult<TrustPromise> createPromise(@RequestBody Map<String, Object> body, HttpSession session) {
+        SysUser user = current(session);
+        Long batchId = body.get("batchId") == null ? null
+                : Long.valueOf(body.get("batchId").toString());
+        String type = body.get("promiseType") == null ? "" : body.get("promiseType").toString().trim();
+        String value = body.get("promiseValue") == null ? "" : body.get("promiseValue").toString().trim();
+        String evidence = body.get("evidencePath") == null ? null : body.get("evidencePath").toString().trim();
+        if (batchId == null) throw ApiException.badRequest("请选择批次");
+        if (type.isEmpty()) throw ApiException.badRequest("请选择承诺类型");
+        if (value.isEmpty()) throw ApiException.badRequest("请填写承诺内容");
+        ownBatch(batchId, user);
+        TrustPromise p = trustPromiseService.create(batchId, user.getId(), type, value, evidence);
+        log.info("农户[{}]为批次[{}]新增承诺：{}={}", user.getUsername(), batchId, type, value);
+        return ApiResult.ok(p);
+    }
+
+    @DeleteMapping("/promises/{id}")
+    public ApiResult<Void> deletePromise(@PathVariable Long id, HttpSession session) {
+        SysUser user = current(session);
+        TrustPromise p = promiseMapper.selectById(id);
+        if (p == null) throw ApiException.badRequest("承诺不存在");
+        if (p.getFarmerId() != null && !p.getFarmerId().equals(user.getId())) {
+            throw ApiException.forbidden("无权删除他人承诺");
+        }
+        promiseMapper.deleteById(id);
+        return ApiResult.ok();
     }
 
     private boolean isBlank(String s) {

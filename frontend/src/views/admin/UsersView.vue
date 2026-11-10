@@ -67,35 +67,36 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { fmtTime } from '../../utils'
+import type { AdminUsersData } from '../../types'
 
-const d = ref({ list: [] })
-const keyword = ref('')
-const role = ref('')
-const loading = ref(false)
-const saving = ref(false)
-const addVisible = ref(false)
+const d = ref<AdminUsersData>({ list: [], allCount: 0, farmerCount: 0, dealerCount: 0 })
+const keyword = ref<string>('')
+const role = ref<string>('')
+const loading = ref<boolean>(false)
+const saving = ref<boolean>(false)
+const addVisible = ref<boolean>(false)
 const addForm = reactive({ role: 'farmer', username: '', password: '', realName: '', phone: '', address: '' })
 
-async function load() {
+async function load(): Promise<void> {
   loading.value = true
   try {
-    d.value = await http.get('/api/admin/users', {
+    d.value = await http.get<AdminUsersData>('/api/admin/users', {
       params: { keyword: keyword.value || undefined, role: role.value || undefined }
     })
   } finally { loading.value = false }
 }
 
-const openAdd = () => {
+const openAdd = (): void => {
   Object.assign(addForm, { role: 'farmer', username: '', password: '', realName: '', phone: '', address: '' })
   addVisible.value = true
 }
 
-async function save() {
+async function save(): Promise<void> {
   saving.value = true
   try {
     await http.post('/api/admin/users', addForm)

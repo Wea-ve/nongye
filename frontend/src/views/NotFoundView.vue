@@ -1,9 +1,12 @@
+<script setup lang="ts">
+</script>
+
 <template>
   <div class="nf">
     <div class="nf-icon">🧭</div>
     <div class="nf-code">404</div>
     <div class="nf-msg">页面走丢了，这里什么都没有</div>
-    <el-button type="primary" @click="$router.push('/app/login')">回到首页</el-button>
+    <el-button type="primary" @click="$router.push('/login')">回到首页</el-button>
   </div>
 </template>
 

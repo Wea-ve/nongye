@@ -26,18 +26,19 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import http from '../../api/http'
 import { fmtTime, traceTypeMap } from '../../utils'
+import type { TraceRecord } from '../../types'
 
-const records = ref([])
-const loading = ref(false)
+const records = ref<TraceRecord[]>([])
+const loading = ref<boolean>(false)
 
 onMounted(async () => {
   loading.value = true
   try {
-    records.value = await http.get('/api/farmer/sales')
+    records.value = await http.get<TraceRecord[]>('/api/farmer/sales')
   } finally { loading.value = false }
 })
 </script>

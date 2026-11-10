@@ -13,6 +13,10 @@ public class KnowledgeDoc {
     private String title;
     private String category;
     private String content;
+    /** 依据来源（标准号/发布机构/平台整理） */
+    private String source;
+    /** 知识版本（标准版本或整理月份） */
+    private String docVersion;
     /** 向量 JSON 数组字符串 */
     private String embedding;
     private LocalDateTime createTime;

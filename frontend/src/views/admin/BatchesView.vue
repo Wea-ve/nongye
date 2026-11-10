@@ -45,26 +45,27 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import http from '../../api/http'
 import { downloadBlob, batchStatusMap, fmtDate } from '../../utils'
+import type { CropBatch } from '../../types'
 
-const list = ref([])
-const keyword = ref('')
-const loading = ref(false)
+const list = ref<CropBatch[]>([])
+const keyword = ref<string>('')
+const loading = ref<boolean>(false)
 
-async function load() {
+async function load(): Promise<void> {
   loading.value = true
   try {
-    list.value = await http.get('/api/admin/batches', { params: { keyword: keyword.value || undefined } })
+    list.value = await http.get<CropBatch[]>('/api/admin/batches', { params: { keyword: keyword.value || undefined } })
   } finally { loading.value = false }
 }
 
-const openTrace = (row) => window.open(`/app/trace/${row.traceCode}`, '_blank')
+const openTrace = (row: CropBatch): Window | null => window.open(`/app/trace/${row.traceCode}`, '_blank')
 
-async function exportExcel() {
-  const res = await http.get('/admin/batches/export', { responseType: 'blob' })
+async function exportExcel(): Promise<void> {
+  const res = await http.get<{ data: BlobPart }>('/admin/batches/export', { responseType: 'blob' })
   downloadBlob(res, '种植批次.xlsx')
 }
 

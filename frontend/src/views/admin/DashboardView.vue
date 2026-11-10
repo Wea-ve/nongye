@@ -40,21 +40,34 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import type { EChartsOption } from 'echarts'
 import http from '../../api/http'
 import StatCard from '../../components/StatCard.vue'
 import ChartBox from '../../components/ChartBox.vue'
-import { complaintStatusMap } from '../../utils'
+import { complaintStatusMap, type DictItem } from '../../utils'
+import type { AdminDashboard, CountRow, StatRow } from '../../types'
 
-const d = ref({})
+const d = ref<AdminDashboard>({
+  batchTotal: 0,
+  farmerCount: 0,
+  dealerCount: 0,
+  pendingCount: 0,
+  complaintTotal: 0,
+  scanToday: 0,
+  cropStats: [],
+  complaintStatus: [],
+  trace7days: [],
+  scan7days: []
+})
 
-const toPieData = (rows, map) => (rows || []).map(r => ({
-  name: map?.[r.status]?.text || r.crop_name || r.status,
+const toPieData = (rows: StatRow[] | undefined, map?: Record<string, DictItem>) => (rows || []).map(r => ({
+  name: map?.[r.status || '']?.text || r.crop_name || r.status,
   value: Number(r.cnt || r.total || 0)
 }))
 
-const cropPie = computed(() => ({
+const cropPie = computed<EChartsOption>(() => ({
   tooltip: { trigger: 'item', formatter: '{b}: {c} 斤 ({d}%)' },
   legend: { bottom: 0 },
   series: [{
@@ -64,7 +77,7 @@ const cropPie = computed(() => ({
   }]
 }))
 
-const complaintPie = computed(() => ({
+const complaintPie = computed<EChartsOption>(() => ({
   tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
   legend: { bottom: 0 },
   series: [{
@@ -74,7 +87,7 @@ const complaintPie = computed(() => ({
   }]
 }))
 
-const mkLine = (rows, name) => ({
+const mkLine = (rows: CountRow[] | undefined, name: string): EChartsOption => ({
   tooltip: { trigger: 'axis' },
   grid: { left: 40, right: 20, top: 30, bottom: 30 },
   xAxis: { type: 'category', data: (rows || []).map(r => String(r.day).slice(5)) },
@@ -88,11 +101,11 @@ const mkLine = (rows, name) => ({
   }]
 })
 
-const traceLine = computed(() => mkLine(d.value.trace7days, '流转量'))
-const scanLine = computed(() => mkLine(d.value.scan7days, '扫码量'))
+const traceLine = computed<EChartsOption>(() => mkLine(d.value.trace7days, '流转量'))
+const scanLine = computed<EChartsOption>(() => mkLine(d.value.scan7days, '扫码量'))
 
 onMounted(async () => {
-  d.value = await http.get('/api/admin/dashboard')
+  d.value = await http.get<AdminDashboard>('/api/admin/dashboard')
 })
 </script>
 

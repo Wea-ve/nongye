@@ -42,20 +42,22 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import type { EChartsOption } from 'echarts'
 import http from '../../api/http'
 import ChartBox from '../../components/ChartBox.vue'
 import { fmtTime } from '../../utils'
+import type { ScanStatsData } from '../../types'
 
-const d = ref({ hotBatches: [], scanLogs: [], scan7days: [] })
-const trend = computed(() => {
+const d = ref<ScanStatsData>({ todayCount: 0, hotBatches: [], scanLogs: [], scan7days: [] })
+const trend = computed<number>(() => {
   const rows = d.value.scan7days || []
   if (rows.length < 2) return 0
   return Number(rows[rows.length - 1].cnt) - Number(rows[rows.length - 2].cnt)
 })
 
-const lineOption = computed(() => ({
+const lineOption = computed<EChartsOption>(() => ({
   tooltip: { trigger: 'axis' },
   grid: { left: 40, right: 20, top: 30, bottom: 30 },
   xAxis: { type: 'category', data: (d.value.scan7days || []).map(r => String(r.day).slice(5)) },
@@ -68,6 +70,6 @@ const lineOption = computed(() => ({
 }))
 
 onMounted(async () => {
-  d.value = await http.get('/api/admin/scan-stats')
+  d.value = await http.get<ScanStatsData>('/api/admin/scan-stats')
 })
 </script>

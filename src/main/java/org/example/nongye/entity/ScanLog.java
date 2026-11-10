@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 public class ScanLog {
     private Long id;
     private Long batchId;
+    private Long consumerId;
+    private String scene;
     private String traceCode;
     private String ip;
     private String userAgent;

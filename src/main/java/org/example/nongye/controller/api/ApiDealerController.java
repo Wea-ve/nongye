@@ -73,6 +73,16 @@ public class ApiDealerController {
         data.put("available", available);
         data.put("recentRecords", traceRecordMapper.selectByUserAndType(user.getId(), "INBOUND")
                 .stream().limit(5).collect(Collectors.toList()));
+
+        // 周转约束：已入库超过 48h 仍未出库的批次（提醒经销商别压货）
+        java.util.Set<Long> outboundBatchIds = outbound.stream()
+                .map(TraceRecord::getBatchId).collect(Collectors.toSet());
+        java.time.LocalDateTime deadline = java.time.LocalDateTime.now().minusHours(48);
+        long staleOutbound = inbound.stream()
+                .filter(r -> r.getBatchId() != null && !outboundBatchIds.contains(r.getBatchId()))
+                .filter(r -> r.getOperateTime() != null && r.getOperateTime().isBefore(deadline))
+                .map(TraceRecord::getBatchId).distinct().count();
+        data.put("staleOutbound", staleOutbound);
         return ApiResult.ok(data);
     }
 
@@ -107,6 +117,15 @@ public class ApiDealerController {
         boolean alreadyInbound = existing.stream().anyMatch(r -> batchId.equals(r.getBatchId()));
         if (alreadyInbound) {
             throw ApiException.badRequest("该批次您已经入库过，请勿重复操作");
+        }
+        // 数量上限：全平台入库总量不得超过该批次采收量
+        BigDecimal inboundTotal = traceRecordMapper.sumQuantityByBatchAndType(batchId, "INBOUND");
+        if (batch.getHarvestWeight() != null) {
+            BigDecimal remain = batch.getHarvestWeight().subtract(inboundTotal);
+            if (quantity.compareTo(remain) > 0) {
+                throw ApiException.badRequest("入库数量超出该批次可入库余量，当前最多可入库 "
+                        + remain.max(BigDecimal.ZERO).stripTrailingZeros().toPlainString() + " 斤");
+            }
         }
         TraceRecord record = new TraceRecord();
         record.setBatchId(batchId);
@@ -159,6 +178,14 @@ public class ApiDealerController {
         if (!hasInbound) {
             throw ApiException.badRequest("该批次尚未入库，不能出库");
         }
+        // 数量上限：出库量不得超过该经销商在本批次的剩余库存（入库量 - 已出库量）
+        BigDecimal inQty = traceRecordMapper.sumInboundByDealer(batchId, user.getId());
+        BigDecimal outQty = traceRecordMapper.sumOutboundByDealer(batchId, user.getId());
+        BigDecimal stock = inQty.subtract(outQty);
+        if (quantity.compareTo(stock) > 0) {
+            throw ApiException.badRequest("出库数量超出剩余库存，当前最多可出库 "
+                    + stock.max(BigDecimal.ZERO).stripTrailingZeros().toPlainString() + " 斤");
+        }
         TraceRecord record = new TraceRecord();
         record.setBatchId(batchId);
         record.setFromUser(user.getId());
@@ -167,6 +194,14 @@ public class ApiDealerController {
         record.setLocation(location);
         record.setRemark("发往：" + toName);
         traceRecordMapper.insert(record);
+        // 全平台出库总量 ≥ 入库总量时，批次售罄
+        BigDecimal totalIn = traceRecordMapper.sumQuantityByBatchAndType(batchId, "INBOUND");
+        BigDecimal totalOut = traceRecordMapper.sumQuantityByBatchAndType(batchId, "OUTBOUND");
+        if (totalIn.compareTo(BigDecimal.ZERO) > 0 && totalOut.compareTo(totalIn) >= 0
+                && !"SOLD".equals(batch.getStatus())) {
+            batchMapper.markSold(batchId);
+            log.info("批次[{}]已全部出库，状态更新为 SOLD", batch.getBatchNo());
+        }
         log.info("经销商[{}]出库批次[{}] 发往：{} 数量：{} 斤", user.getUsername(), batch.getBatchNo(), toName, quantity);
         return ApiResult.ok();
     }

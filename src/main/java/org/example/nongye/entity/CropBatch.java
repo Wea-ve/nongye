@@ -18,6 +18,11 @@ public class CropBatch {
     private LocalDate actualHarvestDate;
     private BigDecimal harvestWeight;
     private String status;       // PLANTING/HARVESTED/SOLD
+    private Integer onSale;
+    private BigDecimal price;
+    private BigDecimal stock;
+    private Integer subscribeOpen;
+    private String promiseSummary;
     private String traceCode;
     private String qrCodePath;
     private LocalDateTime createTime;

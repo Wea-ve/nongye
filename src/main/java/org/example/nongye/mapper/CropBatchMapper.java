@@ -80,6 +80,16 @@ public interface CropBatchMapper {
     List<java.util.Map<String, Object>> countByCrop();
 
     /**
+     * 按状态查询批次（IN 查询）
+     */
+    @Select("<script>SELECT b.*, u.real_name AS farmer_name FROM crop_batch b " +
+            "LEFT JOIN sys_user u ON b.farmer_id = u.id " +
+            "WHERE b.deleted = 0 AND b.status IN " +
+            "<foreach collection='statuses' item='s' open='(' separator=',' close=')'>#{s}</foreach> " +
+            "ORDER BY b.id DESC</script>")
+    List<CropBatch> selectByStatus(@Param("statuses") String... statuses);
+
+    /**
      * 按批次号/作物名模糊搜索（管理员）
      */
     @Select("<script>SELECT b.*, u.real_name AS farmer_name FROM crop_batch b " +

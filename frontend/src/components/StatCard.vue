@@ -8,11 +8,16 @@
   </div>
 </template>
 
-<script setup>
-defineProps({
-  value: { type: [Number, String], default: 0 },
-  label: String,
-  icon: { type: String, default: '🌱' },
-  color: { type: String, default: 'linear-gradient(135deg, #43a047, #2e7d32)' }
+<script setup lang="ts">
+withDefaults(defineProps<{
+  value?: number | string
+  label?: string
+  icon?: string
+  color?: string
+}>(), {
+  value: 0,
+  label: '',
+  icon: '🌱',
+  color: 'linear-gradient(135deg, #43a047, #2e7d32)'
 })
 </script>

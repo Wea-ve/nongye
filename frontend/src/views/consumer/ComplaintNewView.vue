@@ -1,10 +1,11 @@
 <template>
   <div class="trace-page">
     <header class="t-nav">
-      <div class="t-brand">🌾 农芯溯源</div>
+      <div class="t-brand"><img class="brand-ico" src="../../assets/logo-icon.svg" alt="安溯·知源" />安溯·知源</div>
       <div class="t-links">
-        <router-link to="/app/complaint/query">投诉查询</router-link>
-        <router-link to="/app/login">管理入口</router-link>
+        <router-link to="/assistant">🛡️ 消费助手</router-link>
+        <router-link to="/complaint/query">投诉查询</router-link>
+        <router-link to="/login">管理入口</router-link>
       </div>
     </header>
 
@@ -43,41 +44,50 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { complaintTypeMap } from '../../utils'
+import type { ComplaintSubmitResult, CropBatch, TraceDetailData } from '../../types'
 
-const traceCode = ref('')
-const batch = ref(null)
-const resolving = ref(false)
-const saving = ref(false)
+const traceCode = ref<string>('')
+const batch = ref<CropBatch | null>(null)
+const resolving = ref<boolean>(false)
+const saving = ref<boolean>(false)
 const form = reactive({ complainant: '', phone: '', type: 'QUALITY', content: '' })
 
-async function resolveBatch() {
+async function resolveBatch(): Promise<void> {
   const code = traceCode.value.trim()
-  if (!code) return ElMessage.warning('请输入溯源码')
+  if (!code) {
+    ElMessage.warning('请输入溯源码')
+    return
+  }
   resolving.value = true
   try {
-    const d = await http.get(`/api/trace/${code}`)
-    batch.value = d.batch
+    const d = await http.get<Partial<TraceDetailData>>(`/api/trace/${code}`)
+    batch.value = d.batch || null
     ElMessage.success('已识别到对应批次')
   } catch { batch.value = null } finally { resolving.value = false }
 }
 
-async function submit() {
-  if (!form.complainant.trim()) return ElMessage.warning('请填写投诉人')
-  if (!form.content.trim()) return ElMessage.warning('请填写投诉内容')
+async function submit(): Promise<void> {
+  if (!form.complainant.trim()) {
+    ElMessage.warning('请填写投诉人')
+    return
+  }
+  if (!form.content.trim()) {
+    ElMessage.warning('请填写投诉内容')
+    return
+  }
   saving.value = true
   try {
-    const data = await http.post('/api/complaint', {
+    const data = await http.post<ComplaintSubmitResult>('/api/complaint', {
       ...form,
       batchId: batch.value?.id
     })
-    ElMessage.success('投诉已提交')
-    const kw = form.phone || data.id
-    location.href = `/app/complaint/query?keyword=${kw}&submitted=1&cid=${data.id}`
+    ElMessage.success('投诉已提交，查询码：' + data.queryCode)
+    location.href = `/app/complaint/query?keyword=${encodeURIComponent(data.queryCode || '')}&submitted=1`
   } catch { /* 已提示 */ } finally { saving.value = false }
 }
 </script>
@@ -89,6 +99,7 @@ async function submit() {
   padding: 12px 20px; background: #fff; box-shadow: 0 1px 8px rgba(31, 66, 39, .08);
 }
 .t-brand { font-weight: 700; color: #1b5e20; font-size: 17px; }
+.brand-ico { width: 22px; height: 22px; vertical-align: -5px; margin-right: 6px; }
 .t-links { display: flex; gap: 18px; }
 .t-links a { color: #4a674e; text-decoration: none; font-size: 14px; }
 .t-body { max-width: 640px; margin: 0 auto; padding: 24px 14px 60px; }

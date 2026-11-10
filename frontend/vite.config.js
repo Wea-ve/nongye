@@ -7,7 +7,17 @@ export default defineConfig({
   plugins: [vue()],
   build: {
     outDir: '../src/main/resources/static/app',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // 第三方依赖单独分包，利用浏览器长缓存
+        manualChunks: {
+          'vendor-vue': ['vue', 'vue-router', 'axios'],
+          'vendor-element': ['element-plus', '@element-plus/icons-vue'],
+          'vendor-echarts': ['echarts']
+        }
+      }
+    }
   },
   server: {
     port: 5173,

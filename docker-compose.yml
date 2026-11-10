@@ -24,6 +24,7 @@ services:
       # 首次启动自动初始化（按文件名顺序执行；已初始化过则跳过）
       - ./sql/nongyeplus.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
       - ./sql/ai_knowledge.sql:/docker-entrypoint-initdb.d/02-knowledge.sql:ro
+      - ./sql/upgrade_ai_evidence.sql:/docker-entrypoint-initdb.d/03-evidence.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 5s

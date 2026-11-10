@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS knowledge_doc (
     title       VARCHAR(200) NOT NULL COMMENT '知识标题',
     category    VARCHAR(50)  COMMENT '分类：法规标准/种植标准/储存保鲜/检测知识/流通标准/消费科普',
     content     TEXT         NOT NULL COMMENT '知识正文（喂给大模型的片段）',
+    source      VARCHAR(200) COMMENT '依据来源（标准号/发布机构/平台整理）',
+    doc_version VARCHAR(50)  COMMENT '知识版本（标准版本或整理月份）',
     embedding   MEDIUMTEXT   COMMENT '向量（JSON 数组，text-embedding-v3 生成，应用自动回写）',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_knowledge_category (category)
@@ -535,3 +537,8 @@ INSERT INTO knowledge_doc (title, category, content)
 SELECT * FROM (SELECT '草莓的正确清洗方法', '消费科普',
 '草莓清洗正确步骤：先不去蒂用流水冲洗 30 秒（去蒂后浸泡会让污染物渗入果肉）、可用小苏打水浸泡 5-10 分钟、最后去蒂食用。清洗后的草莓不能再存放，随洗随吃。市售草莓霜霉灰霉病多发，表皮破损发软的果要挑出，整盒发霉建议弃食。') AS t
 WHERE NOT EXISTS (SELECT 1 FROM knowledge_doc WHERE title = '草莓的正确清洗方法');
+
+INSERT INTO knowledge_doc (title, category, content)
+SELECT * FROM (SELECT '吡虫啉在番茄上的残留限量与安全间隔期', '法规标准',
+'GB 2763-2021 规定吡虫啉在番茄（西红柿）中的最大残留限量（MRL）为 0.5 mg/kg。吡虫啉常用于防治蚜虫，标签推荐安全间隔期通常为 7 天；实际采收应不早于最后一次施药后 7 天，并以产品标签标注为准。检测报告实测值低于 0.5 mg/kg 即判定该项合格。') AS t
+WHERE NOT EXISTS (SELECT 1 FROM knowledge_doc WHERE title = '吡虫啉在番茄上的残留限量与安全间隔期');

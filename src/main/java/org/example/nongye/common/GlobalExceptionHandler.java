@@ -28,11 +28,9 @@ public class GlobalExceptionHandler {
     public ModelAndView handleRuntime(RuntimeException e) {
         String msg = e.getMessage();
         if (isAuthError(msg)) {
-            // 权限/登录异常：跳登录页
+            // 权限/登录异常：跳 SPA 登录页
             log.warn("鉴权异常：{}", msg);
-            ModelAndView mv = new ModelAndView("login");
-            mv.addObject("error", "请先登录");
-            return mv;
+            return new ModelAndView("redirect:/app/login");
         }
         // 业务异常：友好错误页
         log.warn("业务异常：{}", msg);

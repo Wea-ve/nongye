@@ -33,19 +33,20 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import http from '../../api/http'
 import { batchStatusMap } from '../../utils'
+import type { CropBatch } from '../../types'
 
-const list = ref([])
-const keyword = ref('')
-const loading = ref(false)
+const list = ref<CropBatch[]>([])
+const keyword = ref<string>('')
+const loading = ref<boolean>(false)
 
-async function load() {
+async function load(): Promise<void> {
   loading.value = true
   try {
-    list.value = await http.get('/api/dealer/records', { params: { keyword: keyword.value || undefined } })
+    list.value = await http.get<CropBatch[]>('/api/dealer/records', { params: { keyword: keyword.value || undefined } })
   } finally { loading.value = false }
 }
 

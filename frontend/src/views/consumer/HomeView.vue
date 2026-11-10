@@ -1,0 +1,337 @@
+<template>
+  <div class="trace-page">
+    <!-- 顶部导航条 -->
+    <header class="t-nav">
+      <div class="t-brand"><img class="brand-ico" src="../../assets/logo-icon.svg" alt="安溯·知源" />安溯·知源</div>
+      <div class="t-links">
+        <router-link to="/assistant">我的助手</router-link>
+        <router-link to="/invite/new" v-if="consumer.profile">邀请朋友</router-link>
+        <router-link to="/login">管理入口</router-link>
+      </div>
+    </header>
+
+    <div class="t-body" v-loading="loading">
+      <!-- 助手 Tip 横条 -->
+      <el-card v-if="home?.tip" shadow="never" class="t-card home-tip"
+               @click="$router.push('/assistant')">
+        <span class="tip-ico">💡</span>
+        <span class="tip-text">{{ home.tip }}</span>
+        <span class="tip-arrow">→</span>
+      </el-card>
+
+      <!-- 我的信任清单 -->
+      <el-card shadow="never" class="t-card">
+        <template #header>🌾 我的信任清单</template>
+        <div v-if="home?.follows?.length" class="follow-list">
+          <div v-for="(f, i) in home.follows" :key="i" class="follow-item">
+            <div class="follow-main">
+              <span class="follow-target">你关注 {{ f.targetName }}</span>
+              <span class="follow-meta">· {{ f.days }} 天 · 买过 {{ f.buyCount || 0 }} 次</span>
+            </div>
+            <el-tag v-if="f.notifyEnabled" size="small" effect="dark" type="success" style="border:none">🔔 提醒中</el-tag>
+          </div>
+        </div>
+        <el-empty v-else description="还没关注任何农场" :image-size="60" />
+      </el-card>
+
+      <!-- 正在长的 -->
+      <el-card shadow="never" class="t-card">
+        <template #header>🌱 正在长的</template>
+        <div v-if="home?.growing?.length" class="growing-list">
+          <div v-for="(g, i) in home.growing" :key="i" class="growing-item">
+            <div class="growing-main">
+              <span class="growing-crop">{{ g.cropName }}</span>
+              <span class="growing-meta">{{ g.farmerName || '' }} · {{ g.statusText || growingStatusText(g.status) }}</span>
+            </div>
+            <div class="growing-right">
+              <span v-if="g.expectDate" class="growing-date">预计 {{ g.expectDate }}</span>
+              <el-switch v-model="g.notifyEnabled" size="small" active-text="🔔 上市提醒我"
+                         @change="toggleNotify(g)" />
+            </div>
+          </div>
+        </div>
+        <el-empty v-else description="暂无正在生长的批次" :image-size="60" />
+      </el-card>
+
+      <!-- 待办 -->
+      <el-card shadow="never" class="t-card">
+        <template #header>📋 待办</template>
+        <div v-if="home?.todos?.length" class="todo-list">
+          <div v-for="(t, i) in home.todos" :key="i" class="todo-item" :class="{ overdue: t.type === 'complaint' && isComplaintOverdue(t) }">
+            <div class="todo-main">
+              <el-tag size="small" effect="plain" :type="t.type === 'subscribe' ? 'success' : 'warning'">
+                {{ t.type === 'subscribe' ? '🛒 该买了' : '📢 售后' }}
+              </el-tag>
+              <span class="todo-text">{{ t.text }}</span>
+            </div>
+            <div class="todo-right">
+              <span v-if="t.type === 'subscribe'" class="todo-date">{{ t.nextDate }}</span>
+              <span v-else class="todo-sla" :class="{ 'sla-over': t.type === 'complaint' && isComplaintOverdue(t) }">
+                剩余 {{ slaRemainHours(t) }} 小时
+              </span>
+              <el-button v-if="t.type === 'subscribe'" size="small" type="primary" text @click="markBought(t, i)">
+                买过了
+              </el-button>
+              <el-button v-else size="small" type="primary" text @click="goComplaint(t)">
+                去看
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else description="太棒了，暂无待办" :image-size="60" />
+      </el-card>
+
+      <!-- 助手推荐：一键进入 -->
+      <el-card shadow="never" class="t-card home-assistant-cta" @click="$router.push('/assistant')">
+        <div class="ha-icon">🤖</div>
+        <div class="ha-body">
+          <div class="ha-title">有问题？问我的消费助手</div>
+          <div class="ha-desc">怎么存 · 什么时候再买 · 上次那个菜怎么样</div>
+        </div>
+        <span class="tip-arrow">→</span>
+      </el-card>
+
+      <!-- 未登录态：手机号登录 -->
+      <el-card v-if="!consumer.profile" shadow="never" class="t-card home-login">
+        <template #header>🔑 用手机号登录查看更多</template>
+        <el-form label-width="80px">
+          <el-form-item label="手机号" required>
+            <el-input v-model="loginForm.phone" placeholder="11 位手机号" clearable maxlength="11" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" style="width: 100%" :loading="loginSubmitting" @click="doLogin">
+              登录
+            </el-button>
+          </el-form-item>
+          <div class="login-tip">还没账号？<router-link to="/invite/00000000">输入邀请码成为信任者 →</router-link></div>
+        </el-form>
+      </el-card>
+
+      <div class="t-foot">从田间到餐桌 · 每一步都可信 —— 安溯·知源 VeriTrace 平台提供</div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import http, { type ApiError } from '../../api/http'
+import { consumer, fetchConsumerMe, consumerLogin } from '../../store/auth'
+
+const router = useRouter()
+const loading = ref<boolean>(false)
+const loginSubmitting = ref<boolean>(false)
+
+interface FollowItem {
+  targetName: string
+  days: number
+  buyCount?: number
+  notifyEnabled?: boolean
+}
+
+interface GrowingItem {
+  cropName: string
+  farmerName?: string
+  status?: string
+  statusText?: string
+  expectDate?: string
+  notifyEnabled: boolean
+  id?: number
+}
+
+interface TodoItem {
+  type: 'subscribe' | 'complaint'
+  text: string
+  nextDate?: string
+  complaintId?: number
+  slaHours?: number
+  slaPassedHours?: number
+  id?: number
+}
+
+interface HomeData {
+  follows: FollowItem[]
+  growing: GrowingItem[]
+  todos: TodoItem[]
+  tip?: string | null
+}
+
+const home = ref<HomeData | null>(null)
+const loginForm = reactive({ phone: '' })
+
+function growingStatusText(s?: string): string {
+  if (!s) return '生长中'
+  const m: Record<string, string> = {
+    PLANTING: '种植中',
+    GROWING: '生长中',
+    HARVESTED: '已采收',
+    HARVEST: '待采收'
+  }
+  return m[s] || s
+}
+
+function slaRemainHours(t: TodoItem): number {
+  const remain = (t.slaHours ?? 24) - (t.slaPassedHours ?? 0)
+  return remain
+}
+
+function isComplaintOverdue(t: TodoItem): boolean {
+  return slaRemainHours(t) < 0
+}
+
+async function loadHome(): Promise<void> {
+  loading.value = true
+  try {
+    home.value = await http.get<HomeData>('/api/consumer/home')
+  } catch (e) {
+    const msg = (e as ApiError)?.msg
+    // 401 或未登录时后端应返回空数据（消费者会话是可选的）
+    if (msg && msg.includes('未登录')) {
+      home.value = { follows: [], growing: [], todos: [], tip: null }
+    } else {
+      console.warn('loadHome failed:', msg)
+    }
+  } finally { loading.value = false }
+}
+
+async function toggleNotify(g: GrowingItem): Promise<void> {
+  if (!g.id) {
+    ElMessage.info('暂无批次关联，设置已本地保存')
+    return
+  }
+  try {
+    await http.post('/api/consumer/subscribe', {
+      batchId: g.id,
+      notifyEnabled: g.notifyEnabled
+    })
+    ElMessage.success(g.notifyEnabled ? '已开启上市提醒' : '已关闭提醒')
+  } catch {
+    // 保留本地状态
+    g.notifyEnabled = !g.notifyEnabled
+  }
+}
+
+async function markBought(t: TodoItem, idx: number): Promise<void> {
+  if (!t.id) {
+    home.value?.todos?.splice(idx, 1)
+    ElMessage.success('已标记')
+    return
+  }
+  try {
+    await http.post(`/api/consumer/subscription/${t.id}/consume`)
+    home.value?.todos?.splice(idx, 1)
+    ElMessage.success('已标记买过')
+  } catch { /* 已提示 */ }
+}
+
+function goComplaint(t: TodoItem): void {
+  router.push(`/complaint/query?cid=${t.complaintId || ''}`)
+}
+
+async function doLogin(): Promise<void> {
+  if (!loginForm.phone.trim()) { ElMessage.warning('请填写手机号'); return }
+  loginSubmitting.value = true
+  try {
+    await consumerLogin(loginForm.phone.trim())
+    ElMessage.success('登录成功')
+    await loadHome()
+  } catch { /* 已提示 */ } finally { loginSubmitting.value = false }
+}
+
+onMounted(async () => {
+  await fetchConsumerMe()
+  await loadHome()
+})
+</script>
+
+<style scoped>
+/* 复用 consumer 公共样式 */
+.trace-page { min-height: 100vh; background: #f4f7f4; }
+.t-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; background: #fff;
+  box-shadow: 0 1px 8px rgba(31, 66, 39, .08);
+  position: sticky; top: 0; z-index: 100;
+}
+.t-brand { font-weight: 700; color: #1b5e20; font-size: 17px; letter-spacing: 1px; }
+.brand-ico { width: 22px; height: 22px; vertical-align: -5px; margin-right: 6px; }
+.t-links { display: flex; gap: 18px; }
+.t-links a { color: #4a674e; text-decoration: none; font-size: 14px; }
+.t-links a:hover { color: #2e7d32; }
+.t-body { max-width: 720px; margin: 0 auto; padding: 20px 14px 60px; }
+.t-card { margin-bottom: 16px; }
+.t-foot { text-align: center; color: #9aab9d; font-size: 12px; letter-spacing: 2px; margin-top: 10px; }
+
+/* Tip 横条 */
+.home-tip {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  background: linear-gradient(135deg, #e8f5e9, #f1f8e9);
+  transition: transform .15s;
+}
+.home-tip:hover { transform: translateY(-1px); }
+.tip-ico { font-size: 20px; }
+.tip-text { flex: 1; color: #2e7d32; font-size: 14px; }
+.tip-arrow { color: #2e7d32; font-weight: 700; font-size: 16px; }
+
+/* 清单行 */
+.follow-list { display: flex; flex-direction: column; gap: 10px; }
+.follow-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; background: #f7faf7;
+  border-radius: 8px; border: 1px solid #e8f1e8;
+}
+.follow-target { font-weight: 600; color: #23422a; }
+.follow-meta { color: #8a9a8e; font-size: 12.5px; }
+
+/* Growing */
+.growing-list { display: flex; flex-direction: column; gap: 10px; }
+.growing-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; background: #f7faf7;
+  border-radius: 8px; border: 1px solid #e8f1e8; flex-wrap: wrap; gap: 8px;
+}
+.growing-main { flex: 1; min-width: 160px; }
+.growing-crop { font-weight: 600; color: #23422a; font-size: 14px; }
+.growing-meta { color: #8a9a8e; font-size: 12.5px; margin-left: 8px; }
+.growing-right { display: flex; align-items: center; gap: 10px; }
+.growing-date { font-size: 12px; color: #4a674e; background: #e8f5e9; border-radius: 4px; padding: 1px 6px; }
+
+/* Todo */
+.todo-list { display: flex; flex-direction: column; gap: 10px; }
+.todo-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; background: #f7faf7;
+  border-radius: 8px; border: 1px solid #e8f1e8; flex-wrap: wrap; gap: 8px;
+}
+.todo-item.overdue { background: #fef0f0; border-color: #fde2e2; }
+.todo-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 160px; }
+.todo-text { color: #23422a; font-size: 14px; }
+.todo-right { display: flex; align-items: center; gap: 10px; }
+.todo-date { font-size: 12px; color: #4a674e; background: #e8f5e9; border-radius: 4px; padding: 1px 6px; }
+.todo-sla { font-size: 12px; color: #6d7f70; background: #f4f7f4; border-radius: 4px; padding: 1px 6px; }
+.sla-over { color: #c0392b; background: #fde2e2; font-weight: 600; }
+
+/* 助手 CTA */
+.home-assistant-cta {
+  display: flex; align-items: center; gap: 14px; cursor: pointer;
+  background: linear-gradient(135deg, #43a047, #1b5e20);
+  color: #fff; border: none;
+  transition: transform .15s;
+}
+.home-assistant-cta:hover { transform: translateY(-1px); }
+.ha-icon { font-size: 32px; }
+.ha-body { flex: 1; }
+.ha-title { font-size: 15px; font-weight: 600; }
+.ha-desc { font-size: 12px; opacity: .85; margin-top: 2px; }
+
+/* 未登录态 */
+.home-login { opacity: .9; }
+.login-tip { font-size: 12px; color: #8a9a8e; margin-top: 4px; }
+.login-tip a { color: #2e7d32; }
+
+@media (max-width: 768px) {
+  .t-links { gap: 12px; }
+  .growing-right, .todo-right { width: 100%; justify-content: flex-start; }
+}
+</style>

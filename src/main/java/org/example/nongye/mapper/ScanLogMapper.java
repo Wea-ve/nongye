@@ -9,8 +9,8 @@ import java.util.Map;
 @Mapper
 public interface ScanLogMapper {
 
-    @Insert("INSERT INTO scan_log (batch_id, trace_code, ip, user_agent) " +
-            "VALUES (#{batchId}, #{traceCode}, #{ip}, #{userAgent})")
+    @Insert("INSERT INTO scan_log (batch_id, consumer_id, scene, trace_code, ip, user_agent) " +
+            "VALUES (#{batchId}, #{consumerId}, #{scene}, #{traceCode}, #{ip}, #{userAgent})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ScanLog log);
 
@@ -38,4 +38,8 @@ public interface ScanLogMapper {
     @Select("SELECT s.*, b.crop_name AS crop_name, b.batch_no AS batch_no FROM scan_log s " +
             "LEFT JOIN crop_batch b ON s.batch_id = b.id ORDER BY s.scan_time DESC LIMIT 200")
     List<ScanLog> selectAll();
+
+    /** 补写扫码时的消费者与场景（先 insert 后 update，兼容旧扫描链路） */
+    @Update("UPDATE scan_log SET consumer_id=#{cid}, scene=#{scene} WHERE id=#{id}")
+    int updateConsumerAndScene(@Param("id") Long id, @Param("cid") Long cid, @Param("scene") String scene);
 }

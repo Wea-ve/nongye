@@ -11,6 +11,24 @@
       <StatCard :value="d.reportCount" label="检测报告" icon="📋" color="linear-gradient(135deg, #8e24aa, #6a1b9a)" />
     </div>
 
+    <el-card shadow="never" class="trust-card">
+      <template #header>🛡️ 信任经营（消费者侧真实反馈）</template>
+      <div class="stat-grid">
+        <StatCard :value="d.followers || 0" label="信任者数（关注我）" icon="👥"
+                  color="linear-gradient(135deg, #26a69a, #00796b)" />
+        <StatCard :value="`${d.repurchaseRate || 0}%`" label="复购率（2 次以上订阅）" icon="🔁"
+                  color="linear-gradient(135deg, #42a5f5, #1565c0)" />
+        <StatCard :value="`${d.avgCloseHours || 0}h`" label="售后闭环时长（首响）" icon="⏱️"
+                  color="linear-gradient(135deg, #ffa726, #ef6c00)" />
+        <StatCard :value="d.promiseCount || 0" label="已公示信任承诺" icon="🤝"
+                  color="linear-gradient(135deg, #66bb6a, #2e7d32)" />
+      </div>
+      <div class="trust-tip">
+        复购率 = 在本农户批次上有 2 次以上订阅的消费者 / 有订阅的消费者（当前 {{ d.repeatConsumers || 0 }}/{{ d.subscribedConsumers || 0 }}）。
+        信任者越多、复购率越高，说明"可核验的溯源"真的带来了回头客。
+      </div>
+    </el-card>
+
     <el-row :gutter="16" style="margin-top: 16px">
       <el-col :xs="24" :md="14">
         <el-card shadow="never">
@@ -40,16 +58,25 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import type { EChartsOption } from 'echarts'
 import http from '../../api/http'
 import StatCard from '../../components/StatCard.vue'
 import ChartBox from '../../components/ChartBox.vue'
 import { batchStatusMap, fmtDate } from '../../utils'
+import type { FarmerDashboard } from '../../types'
 
-const d = ref({ recentBatches: [] })
+const d = ref<FarmerDashboard>({
+  totalBatches: 0,
+  plantingCount: 0,
+  harvestedCount: 0,
+  reportCount: 0,
+  cropStats: [],
+  recentBatches: []
+})
 
-const pieOption = computed(() => {
+const pieOption = computed<EChartsOption | null>(() => {
   const rows = d.value.cropStats || []
   if (!rows.length) return null
   return {
@@ -59,13 +86,13 @@ const pieOption = computed(() => {
       type: 'pie', radius: ['40%', '68%'], center: ['50%', '45%'],
       itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
       label: { show: false },
-      data: rows.map(r => ({ name: r.name, value: r.value }))
+      data: rows.map(r => ({ name: r.name, value: Number(r.value) }))
     }]
   }
 })
 
 onMounted(async () => {
-  d.value = await http.get('/api/farmer/dashboard')
+  d.value = await http.get<FarmerDashboard>('/api/farmer/dashboard')
 })
 </script>
 
@@ -73,6 +100,8 @@ onMounted(async () => {
 .stat-grid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
 }
+.trust-card { margin-top: 16px; }
+.trust-tip { margin-top: 12px; font-size: 12.5px; color: #8a9a8e; line-height: 1.7; }
 @media (max-width: 768px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
 }

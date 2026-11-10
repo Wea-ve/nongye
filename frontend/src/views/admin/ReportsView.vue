@@ -33,18 +33,19 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import http from '../../api/http'
 import StatCard from '../../components/StatCard.vue'
 import { fmtDate } from '../../utils'
+import type { AdminReportsData } from '../../types'
 
-const d = ref({ list: [] })
-const loading = ref(false)
+const d = ref<AdminReportsData>({ list: [], qualifiedCount: 0, unqualifiedCount: 0 })
+const loading = ref<boolean>(false)
 
 onMounted(async () => {
   loading.value = true
-  try { d.value = await http.get('/api/admin/reports') } finally { loading.value = false }
+  try { d.value = await http.get<AdminReportsData>('/api/admin/reports') } finally { loading.value = false }
 })
 </script>
 
