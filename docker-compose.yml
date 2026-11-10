@@ -1,8 +1,8 @@
 # =============================================
 # 农产品全链路溯源管理平台 - 一键部署
 # 首次启动：docker compose up -d --build
-#   MySQL 自动执行 sql/nongyeplus.sql（建表+演示数据）
-#   和 sql/ai_knowledge.sql（RAG 知识库），仅初始化一次
+#   MySQL 按 01→07 顺序自动初始化：基础表 + 演示数据、RAG 知识库、证据表、
+#   信任者体系表、承诺种子、消费场景知识与演示场景，仅初始化一次
 # 演示扫码：APP_BASE_URL 改成你电脑的局域网 IP（容器内
 #   自动探测到的是容器虚拟网卡 IP，手机访问不到）
 # =============================================
@@ -25,6 +25,10 @@ services:
       - ./sql/nongyeplus.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
       - ./sql/ai_knowledge.sql:/docker-entrypoint-initdb.d/02-knowledge.sql:ro
       - ./sql/upgrade_ai_evidence.sql:/docker-entrypoint-initdb.d/03-evidence.sql:ro
+      - ./sql/upgrade_trust_consumer.sql:/docker-entrypoint-initdb.d/04-trust-schema.sql:ro
+      - ./sql/trust_promise_seed.sql:/docker-entrypoint-initdb.d/05-promise-seed.sql:ro
+      - ./sql/consumer_knowledge_seed.sql:/docker-entrypoint-initdb.d/06-consumer-knowledge.sql:ro
+      - ./sql/demo_trust_scenarios.sql:/docker-entrypoint-initdb.d/07-demo-scenarios.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 5s

@@ -74,9 +74,11 @@ frontend/src/
 sql/
 ├── nongyeplus.sql                基础库表与演示数据
 ├── ai_knowledge.sql              RAG 知识库（标准类 102 条）
-├── consumer_knowledge_seed.sql   消费场景知识（储存/食用/选购 24 条）
+├── upgrade_ai_evidence.sql       AI 回答来源/版本与投诉查询码字段升级
 ├── upgrade_trust_consumer.sql    信任者体系表（消费账户/关注/订阅/事件/承诺/履约）
-└── trust_promise_seed.sql        演示批次的信任承诺
+├── trust_promise_seed.sql        演示批次的信任承诺
+├── consumer_knowledge_seed.sql   消费场景知识（储存/食用/选购 24 条）
+└── demo_trust_scenarios.sql      对比批次、订阅到期、超时工单等演示场景
 ```
 
 ## 快速启动
@@ -86,10 +88,12 @@ sql/
 ```bash
 mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS nongyeplus DEFAULT CHARSET utf8mb4;"
 mysql -uroot -p123456 nongyeplus < sql/nongyeplus.sql
-mysql -uroot -p123456 nongyeplus < sql/upgrade_trust_consumer.sql
 mysql -uroot -p123456 nongyeplus < sql/ai_knowledge.sql
-mysql -uroot -p123456 nongyeplus < sql/consumer_knowledge_seed.sql
+mysql -uroot -p123456 nongyeplus < sql/upgrade_ai_evidence.sql
+mysql -uroot -p123456 nongyeplus < sql/upgrade_trust_consumer.sql
 mysql -uroot -p123456 nongyeplus < sql/trust_promise_seed.sql
+mysql -uroot -p123456 nongyeplus < sql/consumer_knowledge_seed.sql
+mysql -uroot -p123456 nongyeplus < sql/demo_trust_scenarios.sql
 ```
 
 ### 2. 启动后端
