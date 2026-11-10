@@ -54,6 +54,7 @@ docs/安溯知源-技术文档.docx
 docs/安溯知源-技术文档.pdf
 docs/build_tech_doc.py
 docs/_fix.py
+docs/安溯知源-演示视频脚本.md
 
 # 本地真实环境变量（模板 .env.example 可提交）
 .env
