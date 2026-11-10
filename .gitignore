@@ -49,5 +49,11 @@ hello
 ### 文档生成临时资源（字体缓存，不随仓库提交） ###
 docs/_fonts/
 
+### 旧版技术文档与旧生成脚本（已被参赛版本替代，本地保留不提交） ###
+docs/安溯知源-技术文档.docx
+docs/安溯知源-技术文档.pdf
+docs/build_tech_doc.py
+docs/_fix.py
+
 # 本地真实环境变量（模板 .env.example 可提交）
 .env
