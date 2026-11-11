@@ -4,6 +4,7 @@
     <header class="t-nav">
       <div class="t-brand"><img class="brand-ico" src="../../assets/logo-icon.svg" alt="安溯·知源" />安溯·知源</div>
       <div class="t-links">
+        <router-link to="/consumer/home">🏠 我的信任清单</router-link>
         <router-link to="/assistant">🛡️ 消费助手</router-link>
         <router-link to="/complaint/new">我要投诉</router-link>
         <router-link to="/complaint/query">投诉查询</router-link>

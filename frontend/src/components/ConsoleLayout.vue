@@ -150,7 +150,8 @@ const MENU: Record<Role, MenuItem[]> = {
     { path: '/farmer/trace-codes', title: '溯源码', icon: '🔖' },
     { path: '/farmer/reports', title: '检测报告', icon: '📋' },
     { path: '/farmer/sales', title: '销售记录', icon: '💰' },
-    { path: '/farmer/promises', title: '信任承诺', icon: '🤝' }
+    { path: '/farmer/promises', title: '信任承诺', icon: '🤝' },
+    { path: '/farmer/complaints', title: '售后工单', icon: '🛠️' }
   ],
   dealer: [
     { path: '/dealer/dashboard', title: '工作台', icon: '🏠' },

@@ -97,6 +97,15 @@ public interface ComplaintMapper {
     List<Complaint> selectByConsumer(@Param("consumerId") Long consumerId);
 
     /**
+     * 农户端：本农户名下批次的投诉工单
+     */
+    @Select("SELECT c.*, b.crop_name, b.batch_no FROM complaint c " +
+            "JOIN crop_batch b ON c.batch_id = b.id " +
+            "WHERE b.farmer_id = #{farmerId} AND COALESCE(b.deleted, 0) = 0 " +
+            "ORDER BY c.id DESC")
+    List<Complaint> selectByFarmer(@Param("farmerId") Long farmerId);
+
+    /**
      * 消费者确认/关闭工单前的凭证校验
      */
     @Select("SELECT COUNT(*) FROM complaint WHERE id = #{id} AND query_code = #{queryCode}")

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -34,6 +35,8 @@ public class ConsumerService {
     private ComplaintMapper complaintMapper;
     @Autowired
     private TrustPromiseMapper trustPromiseMapper;
+    @Autowired
+    private TrustPromiseService trustPromiseService;
 
     // ==================== 账户 ====================
 
@@ -153,47 +156,81 @@ public class ConsumerService {
         List<ConsumerFollow> follows = consumerFollowMapper.selectByConsumer(consumerId);
         List<ConsumerSubscription> subs = consumerSubscriptionMapper.selectByConsumer(consumerId);
 
-        List<Map<String, Object>> followList = getConsumerFollows(consumerId);
-
-        // growing：关注且状态 PLANTING/HARVESTED 的批次
-        List<Map<String, Object>> growing = new ArrayList<>();
+        // 关注清单：targetName / days / buyCount / notifyEnabled（与前端 HomeView 字段对齐）
+        List<Map<String, Object>> followList = new ArrayList<>();
         for (ConsumerFollow f : follows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            String targetName = null;
+            String traceCode = null;
             if ("BATCH".equals(f.getTargetType())) {
                 CropBatch b = cropBatchMapper.selectById(f.getTargetId());
-                if (b != null && ("PLANTING".equals(b.getStatus()) || "HARVESTED".equals(b.getStatus()))) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("batchId", b.getId());
-                    m.put("batchNo", b.getBatchNo());
-                    m.put("cropName", b.getCropName());
-                    m.put("farmName", b.getFarmerName());
-                    m.put("status", b.getStatus());
-                    m.put("expectHarvestDate", b.getExpectHarvestDate());
-                    growing.add(m);
+                if (b != null) {
+                    targetName = (b.getFarmerName() == null ? "" : b.getFarmerName() + " 的") + b.getCropName();
+                    traceCode = b.getTraceCode();
                 }
+            } else if ("FARMER".equals(f.getTargetType())) {
+                SysUser u = sysUserMapper.selectById(f.getTargetId());
+                if (u != null) targetName = u.getRealName() != null ? u.getRealName() : u.getUsername();
             }
+            long days = f.getCreateTime() == null ? 0
+                    : Math.max(0, ChronoUnit.DAYS.between(f.getCreateTime().toLocalDate(), LocalDate.now()));
+            long buyCount = subs.stream().filter(s -> Objects.equals(f.getTargetId(), s.getBatchId())).count();
+            m.put("targetType", f.getTargetType());
+            m.put("targetId", f.getTargetId());
+            m.put("targetName", targetName != null ? targetName : "（已下架）");
+            m.put("traceCode", traceCode);
+            m.put("days", days);
+            m.put("buyCount", buyCount);
+            m.put("notifyEnabled", f.getNotifyEnabled() != null && f.getNotifyEnabled() == 1);
+            followList.add(m);
         }
 
-        // todos：今日到期的订阅 + 未关闭的投诉（用 LinkedHashMap 装两条）
+        // growing：关注且处于种植/生长/已采收的批次
+        List<Map<String, Object>> growing = new ArrayList<>();
+        for (ConsumerFollow f : follows) {
+            if (!"BATCH".equals(f.getTargetType())) continue;
+            CropBatch b = cropBatchMapper.selectById(f.getTargetId());
+            if (b == null || b.getStatus() == null) continue;
+            if (!("PLANTING".equals(b.getStatus()) || "GROWING".equals(b.getStatus()) || "HARVESTED".equals(b.getStatus()))) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", b.getId());
+            m.put("batchId", b.getId());
+            m.put("traceCode", b.getTraceCode());
+            m.put("cropName", b.getCropName());
+            m.put("farmerName", b.getFarmerName());
+            m.put("status", b.getStatus());
+            m.put("expectDate", b.getExpectHarvestDate() == null ? null : b.getExpectHarvestDate().toString());
+            m.put("notifyEnabled", f.getNotifyEnabled() != null && f.getNotifyEnabled() == 1);
+            m.put("promises", promiseJudgments(b.getId()));
+            growing.add(m);
+        }
+
+        // todos：今日到期的订阅 + 未关闭的投诉（type=subscribe/complaint）
         List<Map<String, Object>> todos = new ArrayList<>();
         LocalDate today = LocalDate.now();
         for (ConsumerSubscription s : subs) {
             if (s.getNextDate() != null && !s.getNextDate().isAfter(today)) {
                 Map<String, Object> t = new LinkedHashMap<>();
-                t.put("type", "SUBSCRIPTION_DUE");
+                t.put("type", "subscribe");
+                t.put("id", s.getId());
                 t.put("subscriptionId", s.getId());
-                t.put("cropName", s.getCropName());
-                t.put("nextDate", s.getNextDate());
+                t.put("text", "该买「" + s.getCropName() + "」了");
+                t.put("nextDate", s.getNextDate().toString());
                 todos.add(t);
             }
         }
-        List<Complaint> complaints = complaintMapper.selectByConsumer(consumerId);
-        for (Complaint c : complaints) {
+        for (Complaint c : complaintMapper.selectByConsumer(consumerId)) {
             if (c.getStatus() != null && !"CLOSED".equalsIgnoreCase(c.getStatus())) {
                 Map<String, Object> t = new LinkedHashMap<>();
-                t.put("type", "COMPLAINT_OPEN");
+                t.put("type", "complaint");
                 t.put("complaintId", c.getId());
-                t.put("status", c.getStatus());
-                t.put("content", c.getContent());
+                String content = c.getContent() == null ? "售后处理中" : c.getContent();
+                t.put("text", content.length() > 20 ? content.substring(0, 20) + "…" : content);
+                t.put("slaHours", c.getSlaHours() == null ? 24 : c.getSlaHours());
+                t.put("slaPassedHours", c.getCreateTime() == null ? 0
+                        : Math.max(0, ChronoUnit.HOURS.between(c.getCreateTime(), LocalDateTime.now())));
                 todos.add(t);
             }
         }
@@ -203,8 +240,7 @@ public class ConsumerService {
         result.put("growing", growing);
         result.put("todos", todos);
         int month = LocalDate.now().getMonthValue();
-        String tip = String.format("当前是 %d 月，多关注应季果蔬，吃得新鲜又健康！", month);
-        result.put("tip", tip);
+        result.put("tip", String.format("当前是 %d 月，多关注应季果蔬，吃得新鲜又健康！", month));
         return result;
     }
 
@@ -270,5 +306,46 @@ public class ConsumerService {
         e.setPayload(payload);
         e.setCreateTime(LocalDateTime.now());
         consumerEventMapper.insert(e);
+    }
+
+    // ==================== 承诺兑现 ====================
+
+    /** 批次承诺的兑现判定（供信任者首页/侧栏展示） */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> promiseJudgments(Long batchId) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        Map<String, Object> fulfillment = trustPromiseService.fulfillment(batchId);
+        Object raw = fulfillment.get("judgments");
+        if (!(raw instanceof List)) return out;
+        for (Object o : (List<Object>) raw) {
+            Map<String, Object> j = (Map<String, Object>) o;
+            TrustPromise p = (TrustPromise) j.get("promise");
+            if (p == null) continue;
+            String judgment = String.valueOf(j.get("judgment"));
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", p.getId());
+            item.put("type", p.getPromiseType());
+            item.put("typeText", promiseTypeText(p.getPromiseType()));
+            item.put("value", p.getPromiseValue());
+            item.put("status", judgment);
+            item.put("statusText", switch (judgment) {
+                case "FULFILLED" -> "已兑现";
+                case "FAILED" -> "未达成";
+                default -> "待验证";
+            });
+            item.put("remark", j.get("remark"));
+            out.add(item);
+        }
+        return out;
+    }
+
+    private String promiseTypeText(String type) {
+        if (type == null) return "承诺";
+        return switch (type.toUpperCase()) {
+            case "FRESH" -> "新鲜承诺";
+            case "HARVEST_DATE" -> "采收日期承诺";
+            case "QUALITY" -> "品质承诺";
+            default -> "承诺";
+        };
     }
 }

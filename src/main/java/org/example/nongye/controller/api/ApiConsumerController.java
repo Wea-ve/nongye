@@ -3,10 +3,15 @@ package org.example.nongye.controller.api;
 import jakarta.servlet.http.HttpSession;
 import org.example.nongye.common.ApiResult;
 import org.example.nongye.entity.ConsumerAccount;
+import org.example.nongye.entity.ConsumerEvent;
 import org.example.nongye.entity.ConsumerFollow;
 import org.example.nongye.entity.ConsumerSubscription;
+import org.example.nongye.entity.CropBatch;
 import org.example.nongye.mapper.ComplaintMapper;
+import org.example.nongye.mapper.ConsumerEventMapper;
+import org.example.nongye.mapper.ConsumerFollowMapper;
 import org.example.nongye.mapper.ConsumerSubscriptionMapper;
+import org.example.nongye.mapper.CropBatchMapper;
 import org.example.nongye.service.ConsumerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +19,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +41,12 @@ public class ApiConsumerController {
     private ConsumerService consumerService;
     @Autowired
     private ConsumerSubscriptionMapper consumerSubscriptionMapper;
+    @Autowired
+    private ConsumerEventMapper consumerEventMapper;
+    @Autowired
+    private ConsumerFollowMapper consumerFollowMapper;
+    @Autowired
+    private CropBatchMapper cropBatchMapper;
     @Autowired
     private ComplaintMapper complaintMapper;
 
@@ -151,10 +164,79 @@ public class ApiConsumerController {
     public ApiResult<?> subscriptions(HttpSession session) {
         Long consumerId = findConsumerId(session);
         if (consumerId == null) return ApiResult.ok(List.of());
-        return ApiResult.ok(consumerSubscriptionMapper.selectByConsumerAndStatus(consumerId, "ACTIVE"));
+        List<ConsumerSubscription> list = consumerSubscriptionMapper.selectByConsumerAndStatus(consumerId, "ACTIVE");
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (ConsumerSubscription s : list) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", s.getId());
+            m.put("batchId", s.getBatchId());
+            m.put("cropName", s.getCropName());
+            m.put("qty", s.getQty());
+            m.put("cycleDays", s.getCycleDays());
+            m.put("nextDate", s.getNextDate() == null ? null : s.getNextDate().toString());
+            if (s.getBatchId() != null) {
+                CropBatch b = cropBatchMapper.selectById(s.getBatchId());
+                if (b != null) {
+                    m.put("traceCode", b.getTraceCode());
+                    m.put("farmerName", b.getFarmerName());
+                }
+            }
+            out.add(m);
+        }
+        return ApiResult.ok(out);
+    }
+
+    /** 标记"买过了"：按周期顺延下次购买日期 */
+    @PostMapping("/subscription/{id}/consume")
+    public ApiResult<?> consume(@PathVariable Long id, HttpSession session) {
+        Long consumerId = findConsumerId(session);
+        if (consumerId == null) return ApiResult.error(400, "请先注册成为信任者");
+        int rows = consumerSubscriptionMapper.markConsumed(id, consumerId);
+        if (rows == 0) return ApiResult.error(400, "订阅不存在或不属于当前账号");
+        return ApiResult.ok();
+    }
+
+    /** 上市提醒开关：更新已关注批次的 notify_enabled */
+    @PostMapping("/notify")
+    public ApiResult<?> notifyBatch(@RequestBody Map<String, Object> body, HttpSession session) {
+        Long consumerId = findConsumerId(session);
+        if (consumerId == null) return ApiResult.error(400, "请先注册成为信任者");
+        Object bid = body.get("batchId");
+        if (bid == null) return ApiResult.error(400, "batchId 不能为空");
+        Long batchId = bid instanceof Number ? ((Number) bid).longValue() : Long.valueOf(bid.toString());
+        Integer enabled = Boolean.FALSE.equals(body.get("notifyEnabled")) ? 0 : 1;
+        consumerFollowMapper.updateNotify(consumerId, batchId, enabled);
+        return ApiResult.ok();
     }
 
     // ==================== 事件 ====================
+
+    /** 最近动态：返回 icon/text/time，供消费助手侧栏展示 */
+    @GetMapping("/event")
+    public ApiResult<List<Map<String, Object>>> events(@RequestParam(defaultValue = "5") int limit,
+                                                       HttpSession session) {
+        Long consumerId = findConsumerId(session);
+        if (consumerId == null) return ApiResult.ok(List.of());
+        List<ConsumerEvent> all = consumerEventMapper.selectByConsumer(consumerId);
+        int n = Math.min(Math.max(limit, 1), all.size());
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("MM-dd HH:mm");
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (ConsumerEvent e : all.subList(0, n)) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            String type = e.getEventType() == null ? "" : e.getEventType();
+            switch (type) {
+                case "REGISTER" -> { row.put("icon", "🎉"); row.put("text", "注册成为信任者"); }
+                case "LOGIN" -> { row.put("icon", "🔑"); row.put("text", "登录信任者账号"); }
+                case "FOLLOW" -> { row.put("icon", "🌾"); row.put("text", "关注了新的农场或批次"); }
+                case "UNFOLLOW" -> { row.put("icon", "💔"); row.put("text", "取消了关注"); }
+                case "SUBSCRIBE" -> { row.put("icon", "🛒"); row.put("text", "加入常购清单"); }
+                default -> { row.put("icon", "📌"); row.put("text", type); }
+            }
+            row.put("time", e.getCreateTime() == null ? "" : e.getCreateTime().format(fmt));
+            out.add(row);
+        }
+        return ApiResult.ok(out);
+    }
 
     @PostMapping("/event")
     public ApiResult<Void> logEvent(@RequestBody Map<String, Object> body, HttpSession session) {

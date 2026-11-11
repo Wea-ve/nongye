@@ -3,12 +3,14 @@ package org.example.nongye.controller.api;
 import jakarta.servlet.http.HttpSession;
 import org.example.nongye.common.ApiException;
 import org.example.nongye.common.ApiResult;
+import org.example.nongye.entity.Complaint;
 import org.example.nongye.entity.CropBatch;
 import org.example.nongye.entity.DetectionReport;
 import org.example.nongye.entity.FarmingLog;
 import org.example.nongye.entity.SysUser;
 import org.example.nongye.entity.TraceRecord;
 import org.example.nongye.entity.TrustPromise;
+import org.example.nongye.mapper.ComplaintMapper;
 import org.example.nongye.mapper.CropBatchMapper;
 import org.example.nongye.mapper.DetectionReportMapper;
 import org.example.nongye.mapper.FarmerKpiMapper;
@@ -60,6 +62,8 @@ public class ApiFarmerController {
     private TrustPromiseService trustPromiseService;
     @Autowired
     private FarmerKpiMapper kpiMapper;
+    @Autowired
+    private ComplaintMapper complaintMapper;
 
     @Value("${upload.path}")
     private String uploadPath;
@@ -352,6 +356,38 @@ public class ApiFarmerController {
             throw ApiException.forbidden("无权删除他人承诺");
         }
         promiseMapper.deleteById(id);
+        return ApiResult.ok();
+    }
+
+    // ==================== 售后工单（本农户批次收到的投诉） ====================
+
+    @GetMapping("/complaints")
+    public ApiResult<Map<String, Object>> complaints(HttpSession session) {
+        SysUser user = current(session);
+        List<Complaint> list = complaintMapper.selectByFarmer(user.getId());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("complaints", list);
+        data.put("pendingCount", list.stream().filter(c -> "PENDING".equals(c.getStatus())).count());
+        data.put("overdueCount", list.stream().filter(c -> Integer.valueOf(1).equals(c.getOverdue())).count());
+        return ApiResult.ok(data);
+    }
+
+    /** 农户回复工单：只能处理自己批次上的投诉，回复后状态置为处理中 */
+    @PostMapping("/complaints/{id}/reply")
+    public ApiResult<Void> replyComplaint(@PathVariable Long id, @RequestBody Map<String, String> body, HttpSession session) {
+        SysUser user = current(session);
+        Complaint c = complaintMapper.selectById(id);
+        if (c == null) throw ApiException.badRequest("工单不存在");
+        if (c.getBatchId() != null) ownBatch(c.getBatchId(), user);
+        if ("CLOSED".equals(c.getStatus())) throw ApiException.badRequest("工单已关闭，无法回复");
+        String reply = body.get("reply");
+        if (isBlank(reply)) throw ApiException.badRequest("请填写处理说明");
+        Complaint update = new Complaint();
+        update.setId(id);
+        update.setReply(reply.trim());
+        update.setStatus("PROCESSING");
+        complaintMapper.reply(update);
+        log.info("农户[{}]回复工单[{}]：{}", user.getUsername(), id, reply.trim());
         return ApiResult.ok();
     }
 

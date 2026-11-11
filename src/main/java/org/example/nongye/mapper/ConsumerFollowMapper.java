@@ -24,4 +24,11 @@ public interface ConsumerFollowMapper {
 
     @Delete("DELETE FROM consumer_follow WHERE id = #{id}")
     int deleteById(Long id);
+
+    /** 切换上市提醒开关 */
+    @Update("UPDATE consumer_follow SET notify_enabled = #{notifyEnabled} " +
+            "WHERE consumer_id = #{consumerId} AND target_type = 'BATCH' AND target_id = #{batchId}")
+    int updateNotify(@Param("consumerId") Long consumerId,
+                     @Param("batchId") Long batchId,
+                     @Param("notifyEnabled") Integer notifyEnabled);
 }

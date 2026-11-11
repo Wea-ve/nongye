@@ -35,10 +35,12 @@
         <el-card shadow="never" class="t-card">
           <template #header>🛒 常购清单</template>
           <div v-if="subscriptions.length" class="sub-list">
-            <div v-for="(s, i) in subscriptions" :key="i" class="sub-item">
+            <div v-for="(s, i) in subscriptions" :key="i" class="sub-item"
+                 :class="{ 'sub-link': s.traceCode }" @click="openTrace(s)">
               <span class="sub-crop">{{ s.cropName }}</span>
               <span v-if="s.nextDate" class="sub-next">下次 {{ s.nextDate }}</span>
               <span class="sub-cycle">每 {{ s.cycleDays || 7 }} 天</span>
+              <span v-if="s.traceCode" class="sub-go" title="查看批次溯源页，可加入常购/发起售后">溯源 →</span>
             </div>
           </div>
           <el-empty v-else description="还没有常购清单" :image-size="60" />
@@ -137,13 +139,14 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import http from '../../api/http'
 import { consumer, fetchConsumerMe } from '../../store/auth'
 import { chatStream, sourceTypeMap, type ChatMessage, type ChatPayload, type StreamEvent } from '../../components/AiChat.vue'
 
 const route = useRoute()
+const router = useRouter()
 const batchId = computed<number | null>(() => {
   const v = route.params.batchId
   return v ? Number(v) : null
@@ -196,13 +199,24 @@ interface SubscriptionRow {
   cropName: string
   nextDate?: string | null
   cycleDays?: number
+  traceCode?: string
+  farmerName?: string
 }
 interface EventRow { icon: string; text: string; time: string }
 const subscriptions = ref<SubscriptionRow[]>([])
 const events = ref<EventRow[]>([])
 
+/** 常购清单 → 批次溯源页（可加入常购 / 发起售后） */
+function openTrace(s: SubscriptionRow): void {
+  if (s.traceCode) router.push('/trace/' + s.traceCode)
+}
+
 async function loadSide(): Promise<void> {
   // 尝试加载常购清单和动态（后端接口可能还未开放，静默失败）
+  try {
+    const h = await http.get<{ follows?: unknown[] }>('/api/consumer/home')
+    sideStats.value.followCount = h?.follows?.length || 0
+  } catch { /* 忽略 */ }
   try {
     subscriptions.value = await http.get<SubscriptionRow[]>('/api/consumer/subscriptions')
     sideStats.value.buyCount = subscriptions.value.length
@@ -404,6 +418,10 @@ onMounted(async () => {
 .sub-crop { font-weight: 600; color: #23422a; }
 .sub-next { font-size: 12px; color: #2e7d32; background: #e8f5e9; border-radius: 4px; padding: 0 6px; }
 .sub-cycle { font-size: 12px; color: #8a9a8e; }
+.sub-link { cursor: pointer; transition: all .15s; }
+.sub-link:hover { background: #e8f5e9; }
+.sub-link:hover .sub-go { text-decoration: underline; }
+.sub-go { font-size: 12px; color: #2e7d32; margin-left: auto; }
 
 /* 动态 */
 .event-list { display: flex; flex-direction: column; gap: 10px; }

@@ -36,6 +36,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'farmer/reports', component: () => import('../views/farmer/ReportsView.vue'), meta: { role: 'farmer' } },
       { path: 'farmer/sales', component: () => import('../views/farmer/SalesView.vue'), meta: { role: 'farmer' } },
       { path: 'farmer/promises', component: () => import('../views/farmer/PromiseView.vue'), meta: { role: 'farmer' } },
+      { path: 'farmer/complaints', component: () => import('../views/farmer/ComplaintsView.vue'), meta: { role: 'farmer' } },
       // 经销商端
       { path: 'dealer/dashboard', component: () => import('../views/dealer/DashboardView.vue'), meta: { role: 'dealer' } },
       { path: 'dealer/inbound', component: () => import('../views/dealer/InboundView.vue'), meta: { role: 'dealer' } },

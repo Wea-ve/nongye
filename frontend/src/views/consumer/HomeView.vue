@@ -11,9 +11,9 @@
     </header>
 
     <div class="t-body" v-loading="loading">
-      <!-- 助手 Tip 横条 -->
+      <!-- 助手 Tip 横条：未注册时点击弹出注册表单，已注册进入助手 -->
       <el-card v-if="home?.tip" shadow="never" class="t-card home-tip"
-               @click="$router.push('/assistant')">
+               @click="onTipClick">
         <span class="tip-ico">💡</span>
         <span class="tip-text">{{ home.tip }}</span>
         <span class="tip-arrow">→</span>
@@ -23,12 +23,14 @@
       <el-card shadow="never" class="t-card">
         <template #header>🌾 我的信任清单</template>
         <div v-if="home?.follows?.length" class="follow-list">
-          <div v-for="(f, i) in home.follows" :key="i" class="follow-item">
+          <div v-for="(f, i) in home.follows" :key="i" class="follow-item"
+               :class="{ 'follow-link': f.traceCode }" @click="openTraceCode(f.traceCode)">
             <div class="follow-main">
               <span class="follow-target">你关注 {{ f.targetName }}</span>
               <span class="follow-meta">· {{ f.days }} 天 · 买过 {{ f.buyCount || 0 }} 次</span>
             </div>
             <el-tag v-if="f.notifyEnabled" size="small" effect="dark" type="success" style="border:none">🔔 提醒中</el-tag>
+            <span v-if="f.traceCode" class="follow-go">溯源 →</span>
           </div>
         </div>
         <el-empty v-else description="还没关注任何农场" :image-size="60" />
@@ -39,14 +41,26 @@
         <template #header>🌱 正在长的</template>
         <div v-if="home?.growing?.length" class="growing-list">
           <div v-for="(g, i) in home.growing" :key="i" class="growing-item">
-            <div class="growing-main">
-              <span class="growing-crop">{{ g.cropName }}</span>
-              <span class="growing-meta">{{ g.farmerName || '' }} · {{ g.statusText || growingStatusText(g.status) }}</span>
+            <div class="growing-row">
+              <div class="growing-main">
+                <span class="growing-crop">{{ g.cropName }}</span>
+                <span class="growing-meta">{{ g.farmerName || '' }} · {{ g.statusText || growingStatusText(g.status) }}</span>
+              </div>
+              <div class="growing-right">
+                <span v-if="g.expectDate" class="growing-date">预计 {{ g.expectDate }}</span>
+                <el-switch v-model="g.notifyEnabled" size="small" active-text="🔔 上市提醒我"
+                           @change="toggleNotify(g)" />
+              </div>
             </div>
-            <div class="growing-right">
-              <span v-if="g.expectDate" class="growing-date">预计 {{ g.expectDate }}</span>
-              <el-switch v-model="g.notifyEnabled" size="small" active-text="🔔 上市提醒我"
-                         @change="toggleNotify(g)" />
+            <!-- 农户承诺兑现状态：由系统按真实流转时间自动判定 -->
+            <div v-if="g.promises?.length" class="promise-row">
+              <el-tooltip v-for="(p, pi) in g.promises" :key="pi" :content="p.remark || '暂无判定依据'" placement="top">
+                <el-tag size="small" effect="plain" class="promise-tag" :type="promiseTagType(p.status)">
+                  {{ promiseIcon(p.status) }} {{ p.typeText || '承诺' }}<template v-if="p.value"> · {{ p.value }}</template>
+                  · {{ p.statusText || '待验证' }}
+                </el-tag>
+              </el-tooltip>
+              <span v-if="g.traceCode" class="promise-more" @click="openTrace(g)">查看完整承诺与判定依据 →</span>
             </div>
           </div>
         </div>
@@ -103,12 +117,32 @@
               登录
             </el-button>
           </el-form-item>
-          <div class="login-tip">还没账号？<router-link to="/invite/00000000">输入邀请码成为信任者 →</router-link></div>
+          <div class="login-tip">
+            还没账号？<a class="link-btn" @click="openRegister">手机号直接注册 →</a>
+            或 <router-link to="/invite/admin">用邀请码注册</router-link>
+          </div>
         </el-form>
       </el-card>
 
       <div class="t-foot">从田间到餐桌 · 每一步都可信 —— 安溯·知源 VeriTrace 平台提供</div>
     </div>
+
+    <!-- 注册成为信任者 -->
+    <el-dialog v-model="registerVisible" title="注册成为信任者" width="420px" append-to-body>
+      <el-form label-width="72px">
+        <el-form-item label="手机号" required>
+          <el-input v-model="regForm.phone" placeholder="11 位手机号" clearable maxlength="11" />
+        </el-form-item>
+        <el-form-item label="怎么称呼" required>
+          <el-input v-model="regForm.nickname" placeholder="如「王姐」" clearable maxlength="20" />
+        </el-form-item>
+      </el-form>
+      <div class="reg-tip">注册后可关注农场、设置上市提醒、使用专属消费助手。</div>
+      <template #footer>
+        <el-button @click="registerVisible = false">取消</el-button>
+        <el-button type="primary" :loading="registerSubmitting" @click="doRegister">成为信任者</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -117,7 +151,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import http, { type ApiError } from '../../api/http'
-import { consumer, fetchConsumerMe, consumerLogin } from '../../store/auth'
+import { consumer, fetchConsumerMe, consumerLogin, consumerRegister } from '../../store/auth'
 
 const router = useRouter()
 const loading = ref<boolean>(false)
@@ -128,6 +162,16 @@ interface FollowItem {
   days: number
   buyCount?: number
   notifyEnabled?: boolean
+  traceCode?: string
+}
+
+interface PromiseItem {
+  type?: string
+  typeText?: string
+  value?: string
+  status?: 'FULFILLED' | 'FAILED' | 'UNKNOWN' | string
+  statusText?: string
+  remark?: string
 }
 
 interface GrowingItem {
@@ -138,6 +182,8 @@ interface GrowingItem {
   expectDate?: string
   notifyEnabled: boolean
   id?: number
+  traceCode?: string
+  promises?: PromiseItem[]
 }
 
 interface TodoItem {
@@ -160,6 +206,41 @@ interface HomeData {
 const home = ref<HomeData | null>(null)
 const loginForm = reactive({ phone: '' })
 
+/* ===== 注册成为信任者 ===== */
+const registerVisible = ref<boolean>(false)
+const registerSubmitting = ref<boolean>(false)
+const regForm = reactive({ phone: '', nickname: '' })
+
+function openRegister(): void {
+  regForm.phone = loginForm.phone || ''
+  regForm.nickname = ''
+  registerVisible.value = true
+}
+
+/** Tip 横条：未注册先注册，已注册进入消费助手 */
+function onTipClick(): void {
+  if (consumer.profile) {
+    router.push('/assistant')
+  } else {
+    openRegister()
+  }
+}
+
+async function doRegister(): Promise<void> {
+  if (!regForm.phone.trim() || regForm.phone.trim().length !== 11) {
+    ElMessage.warning('请填写 11 位手机号')
+    return
+  }
+  if (!regForm.nickname.trim()) { ElMessage.warning('请填写称呼'); return }
+  registerSubmitting.value = true
+  try {
+    await consumerRegister(regForm.phone.trim(), regForm.nickname.trim(), '')
+    ElMessage.success('恭喜你成为信任者！')
+    registerVisible.value = false
+    await loadHome()
+  } catch { /* 已提示 */ } finally { registerSubmitting.value = false }
+}
+
 function growingStatusText(s?: string): string {
   if (!s) return '生长中'
   const m: Record<string, string> = {
@@ -169,6 +250,29 @@ function growingStatusText(s?: string): string {
     HARVEST: '待采收'
   }
   return m[s] || s
+}
+
+/** 承诺兑现状态 → 标签配色 */
+function promiseTagType(status?: string): 'success' | 'danger' | 'info' {
+  if (status === 'FULFILLED') return 'success'
+  if (status === 'FAILED') return 'danger'
+  return 'info'
+}
+
+function promiseIcon(status?: string): string {
+  if (status === 'FULFILLED') return '✅'
+  if (status === 'FAILED') return '⚠️'
+  return '⏳'
+}
+
+/** 跳转溯源页查看完整承诺与兑现判定依据 */
+function openTrace(g: GrowingItem): void {
+  if (g.traceCode) router.push('/trace/' + g.traceCode)
+}
+
+/** 信任清单条目 → 对应批次溯源页 */
+function openTraceCode(traceCode?: string): void {
+  if (traceCode) router.push('/trace/' + traceCode)
 }
 
 function slaRemainHours(t: TodoItem): number {
@@ -196,12 +300,18 @@ async function loadHome(): Promise<void> {
 }
 
 async function toggleNotify(g: GrowingItem): Promise<void> {
+  if (!consumer.profile) {
+    // 未注册先引导注册，开关回退
+    g.notifyEnabled = !g.notifyEnabled
+    openRegister()
+    return
+  }
   if (!g.id) {
     ElMessage.info('暂无批次关联，设置已本地保存')
     return
   }
   try {
-    await http.post('/api/consumer/subscribe', {
+    await http.post('/api/consumer/notify', {
       batchId: g.id,
       notifyEnabled: g.notifyEnabled
     })
@@ -283,14 +393,26 @@ onMounted(async () => {
 }
 .follow-target { font-weight: 600; color: #23422a; }
 .follow-meta { color: #8a9a8e; font-size: 12.5px; }
+.follow-link { cursor: pointer; transition: all .15s; }
+.follow-link:hover { background: #eef6ee; border-color: #c8e6c9; }
+.follow-go { font-size: 12px; color: #2e7d32; margin-left: 8px; }
+.follow-link:hover .follow-go { text-decoration: underline; }
 
 /* Growing */
 .growing-list { display: flex; flex-direction: column; gap: 10px; }
 .growing-item {
-  display: flex; justify-content: space-between; align-items: center;
+  display: flex; flex-direction: column; align-items: stretch;
   padding: 10px 12px; background: #f7faf7;
-  border-radius: 8px; border: 1px solid #e8f1e8; flex-wrap: wrap; gap: 8px;
+  border-radius: 8px; border: 1px solid #e8f1e8; gap: 8px;
 }
+.growing-row {
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 8px;
+}
+.promise-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.promise-tag { cursor: help; }
+.promise-more { margin-left: auto; color: #2e7d32; font-size: 12px; cursor: pointer; }
+.promise-more:hover { text-decoration: underline; }
 .growing-main { flex: 1; min-width: 160px; }
 .growing-crop { font-weight: 600; color: #23422a; font-size: 14px; }
 .growing-meta { color: #8a9a8e; font-size: 12.5px; margin-left: 8px; }
@@ -329,6 +451,9 @@ onMounted(async () => {
 .home-login { opacity: .9; }
 .login-tip { font-size: 12px; color: #8a9a8e; margin-top: 4px; }
 .login-tip a { color: #2e7d32; }
+.link-btn { color: #2e7d32; cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+.reg-tip { font-size: 12px; color: #8a9a8e; line-height: 1.6; }
 
 @media (max-width: 768px) {
   .t-links { gap: 12px; }

@@ -31,4 +31,10 @@ public interface ConsumerSubscriptionMapper {
 
     @Select("SELECT * FROM consumer_subscription WHERE status='ACTIVE' AND next_date <= CURDATE()")
     List<ConsumerSubscription> selectDueToday();
+
+    /** 标记"买过了"：按周期顺延下次购买日期 */
+    @Update("UPDATE consumer_subscription " +
+            "SET next_date = DATE_ADD(COALESCE(next_date, CURDATE()), INTERVAL COALESCE(cycle_days, 7) DAY) " +
+            "WHERE id = #{id} AND consumer_id = #{consumerId}")
+    int markConsumed(@Param("id") Long id, @Param("consumerId") Long consumerId);
 }

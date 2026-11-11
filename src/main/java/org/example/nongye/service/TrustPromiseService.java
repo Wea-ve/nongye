@@ -87,10 +87,11 @@ public class TrustPromiseService {
             if ("FRESH".equalsIgnoreCase(type)) {
                 int promisedHours = parseHours(p.getPromiseValue());
                 if (promisedHours > 0 && harvestTime != null && inboundTime != null) {
-                    long actualHours = Duration.between(harvestTime, inboundTime).toHours();
-                    boolean ok = actualHours <= promisedHours;
+                    long actualMinutes = Duration.between(harvestTime, inboundTime).toMinutes();
+                    boolean ok = actualMinutes <= promisedHours * 60L;
                     status = ok ? "FULFILLED" : "FAILED";
-                    remark = String.format("承诺≤%dh，实际 HARVEST→INBOUND 耗时 %dh", promisedHours, actualHours);
+                    String actualText = actualMinutes >= 60 ? (actualMinutes / 60) + "h" : actualMinutes + " 分钟";
+                    remark = String.format("承诺≤%dh，实际 HARVEST→INBOUND 耗时 %s", promisedHours, actualText);
                 }
             } else if ("HARVEST_DATE".equalsIgnoreCase(type)) {
                 if (batch != null && batch.getExpectHarvestDate() != null && batch.getActualHarvestDate() != null) {
@@ -160,7 +161,8 @@ public class TrustPromiseService {
                         .map(TraceRecord::getOperateTime).filter(Objects::nonNull)
                         .min(LocalDateTime::compareTo).orElse(null);
                 if (promisedHours > 0 && harvestTime != null && inboundTime != null) {
-                    ok = Duration.between(harvestTime, inboundTime).toHours() <= promisedHours;
+                    long actualMinutes = Duration.between(harvestTime, inboundTime).toMinutes();
+                    ok = actualMinutes <= promisedHours * 60L;
                 }
             } else if ("HARVEST_DATE".equalsIgnoreCase(type) && batch != null
                     && batch.getExpectHarvestDate() != null && batch.getActualHarvestDate() != null) {
