@@ -207,7 +207,7 @@ bullet("以 Agent 工具调用、RAG 知识检索与多模态识别构成 AI 链
 bullet("建立农户事前承诺、系统自动兑现判定与售后 SLA 闭环，让信任可追责、可延续。")
 
 h2("1.4  工程规模概览")
-body("项目采用单仓库前后端一体结构：后端为 62 个 Java 类，前端为 38 个 Vue 组件与 7 个 TypeScript 类型/工具模块，"
+body("项目采用单仓库前后端一体结构：后端为 65 个 Java 类，前端为 47 个 Vue / TypeScript 源文件，"
      "SQL 脚本 9 份，覆盖基础库表、信任者体系、RAG 知识库与演示种子数据；AI 知识库共 126 条，其中农事标准类 102 条、消费场景类 24 条。")
 
 # ============ 2 需求分析 ============
@@ -257,7 +257,7 @@ add_table(
     ["层次", "技术选型", "职责"],
     [
         ["前端表现层", "Vue 3 + TypeScript(strict) + Vite + Element Plus + ECharts + Vue Router + Axios", "页面渲染、交互、图表、会话状态与路由封装"],
-        ["后端接口层", "Spring Boot 4 / Java 17 / Spring MVC", "REST 控制器、SSE 流式推送、会话鉴权、参数校验"],
+        ["后端接口层", "Spring Boot 4 / Java 17 / Spring MVC", "REST 控制器、SSE 流式推送、令牌鉴权（X-Auth-Token）与会话兜底、参数校验"],
         ["业务服务层", "Java 服务类（Agent、评分、承诺、知识、消费者、安全过滤等）", "规则计算、AI 编排、业务规则与事务控制"],
         ["数据访问层", "MyBatis 注解式 Mapper", "实体与数据库之间的映射与 SQL 执行"],
         ["数据存储", "MySQL 8（utf8mb4）", "业务数据、信任者体系、承诺履约与 RAG 知识库"],
@@ -273,7 +273,7 @@ add_table(
         ["controller / controller.api", "页面控制器与各角色 REST 接口（公开溯源、消费者、农户、经销商、管理员、AI）"],
         ["service", "AgentService、TrustScoreService、TrustPromiseService、KnowledgeService、ConsumerService、AiSafetyService 等核心业务服务"],
         ["entity / mapper", "数据实体与注解式 Mapper"],
-        ["config", "Web 配置、登录拦截器、密码加密、售后 SLA 定时扫描任务"],
+        ["config", "Web 配置、登录拦截器、令牌解析过滤器（TokenAuthFilter）、密码加密、售后 SLA 定时扫描任务"],
         ["common", "统一响应结构、业务异常与全局异常处理、密码工具"],
         ["util", "二维码生成、局域网 IP 探测、Excel 导出工具"],
     ],

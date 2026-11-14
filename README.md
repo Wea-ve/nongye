@@ -20,7 +20,7 @@
 
 - **后端**：Spring Boot 4 / Java 17 / MyBatis / MySQL 8
 - **前端**：Vue 3 + TypeScript（strict）+ Vite + Element Plus + ECharts，构建产物内嵌 `static/app/`，单服务部署
-- **AI**：通义千问 `qwen-plus`（function calling Agent，5+3 工具）、`qwen3-vl-plus`（图片识别）、`text-embedding-v3`（RAG 向量检索，126 条消费/标准知识）
+- **AI**：通义千问 `qwen-plus`（function calling Agent，5+3 工具）、`qwen3-vl-plus`（图片识别）、`text-embedding-v3`（RAG 向量检索，126 条知识：农事标准 102 + 消费科普 24）
 
 ## 整体架构
 
@@ -38,7 +38,7 @@
 │   ├─ AgentService        function calling 多轮循环 + SSE + 工具徽章 + sources 依据  │
 │   ├─ KnowledgeService    向量入库 / 余弦 top-k / 关键词降级                          │
 │   └─ AiSafetyService     输入拦截 + 输出兜底                                        │
-│  基础设施：LoginInterceptor 鉴权 · 统一软删除 deleted=0 · 写操作 @Transactional      │
+│  基础设施：TokenAuthFilter 令牌鉴权 · 统一软删除 deleted=0 · 写操作 @Transactional   │
 └───────────────┬───────────────────────────────┬───────────────────────────────────┘
                 │                                 │
         ┌───────▼────────┐               ┌────────▼─────────┐
@@ -60,7 +60,7 @@ src/main/java/org/example/nongye/
 │                         ApiFarmerController / ApiDealerController / ApiAdminController / AiController
 ├── service/              AgentService（function calling）/ TrustScoreService（确定性评分）
 │                         TrustPromiseService（承诺兑现）/ KnowledgeService（RAG）/ AiSafetyService
-├── config/               WebConfig / LoginInterceptor / ComplaintScheduledTask（SLA 扫描）
+├── config/               WebConfig / TokenAuthFilter / LoginInterceptor / ComplaintScheduledTask（SLA 扫描）
 ├── entity/ mapper/       数据实体与注解式 Mapper
 └── util/                 二维码、局域网 IP 探测等
 
