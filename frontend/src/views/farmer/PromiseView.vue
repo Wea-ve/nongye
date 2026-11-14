@@ -33,12 +33,14 @@
     <el-dialog v-model="addVisible" title="新增信任承诺" width="500px">
       <el-form label-width="90px">
         <el-form-item label="批次" required>
-          <el-select v-model="form.batchId" style="width: 100%" placeholder="选择要承诺的批次">
+          <el-select v-model="form.batchId" style="width: 100%" placeholder="选择要承诺的批次"
+                     no-data-text="暂无可承诺批次" :disabled="!batches.length">
             <el-option v-for="b in batches" :key="b.id" :label="`${b.batchNo} · ${b.cropName}`" :value="b.id" />
           </el-select>
+          <div v-if="!batches.length" class="hint warn">你还没有可承诺的批次，请先在「批次管理」创建并完成采收后再来设置承诺。</div>
         </el-form-item>
         <el-form-item label="承诺类型" required>
-          <el-select v-model="form.promiseType" style="width: 100%" @change="onTypeChange">
+          <el-select v-model="form.promiseType" style="width: 100%" no-data-text="加载中…" @change="onTypeChange">
             <el-option v-for="t in types" :key="t.type" :label="t.label" :value="t.type" />
           </el-select>
           <div v-if="currentHint" class="hint">{{ currentHint }}</div>
@@ -52,7 +54,7 @@
       </el-form>
       <template #footer>
         <el-button @click="addVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="save">保存承诺</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!batches.length" @click="save">保存承诺</el-button>
       </template>
     </el-dialog>
   </div>
@@ -110,8 +112,10 @@ async function load(): Promise<void> {
   try {
     const data = await http.get<{ promises: PromiseRow[]; batches: CropBatch[]; types: PromiseTypeOption[] }>('/api/farmer/promises')
     promises.value = mergeBatchNo(data.promises, data.batches)
-    batches.value = data.batches
-    types.value = data.types
+    batches.value = data.batches || []
+    types.value = data.types || []
+  } catch {
+    ElMessage.error('承诺数据加载失败，请刷新页面或重新登录后再试')
   } finally { loading.value = false }
 }
 
@@ -123,7 +127,8 @@ function mergeBatchNo(list: PromiseRow[], bs: CropBatch[]): PromiseRow[] {
 }
 
 function openAdd(): void {
-  form.batchId = null
+  // 默认选中第一个批次，减少空白下拉与误操作
+  form.batchId = batches.value.length ? batches.value[0].id : null
   form.promiseType = 'FRESH'
   form.promiseValue = ''
   form.evidencePath = ''
@@ -163,4 +168,5 @@ onMounted(load)
 .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .page-title { font-size: 20px; font-weight: 700; color: #1b3a22; }
 .hint { font-size: 12px; color: #8a9a8e; line-height: 1.6; margin-top: 4px; }
+.hint.warn { color: #d48806; }
 </style>

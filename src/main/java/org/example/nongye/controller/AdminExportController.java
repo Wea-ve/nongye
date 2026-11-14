@@ -81,7 +81,10 @@ public class AdminExportController {
     }
 
     private void checkAdmin(HttpSession session) {
-        SysUser user = (SysUser) session.getAttribute("loginUser");
+        SysUser user = org.example.nongye.common.AuthContext.user();
+        if (user == null) {
+            user = (SysUser) session.getAttribute("loginUser");
+        }
         if (user == null) throw new RuntimeException("未登录");
         if (!"admin".equals(user.getRole())) throw new RuntimeException("无权限");
     }

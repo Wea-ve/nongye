@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { auth, fetchMe, roleMap, type Role } from '../store/auth'
 
 declare module 'vue-router' {
@@ -74,10 +75,14 @@ router.beforeEach(async (to) => {
     return true
   }
   if (!auth.loaded) await fetchMe()
+  else await fetchMe(true) // 每次进入受保护页面同步一次会话身份，避免多标签页切换账号后身份不一致
   if (!auth.user) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   if (to.meta.role && to.meta.role !== auth.user.role) {
+    // 同一浏览器只能有一个登录身份：其他标签页登录了别的角色会把会话顶掉，
+    // 这里明确提示，避免用户误以为页面自己乱跳
+    ElMessage.warning(`当前登录身份为「${roleMap[auth.user.role]?.name || auth.user.role}」，已切换到对应工作台；如需使用其他角色功能请退出后重新登录`)
     return roleMap[auth.user.role]?.home || '/login'
   }
   return true

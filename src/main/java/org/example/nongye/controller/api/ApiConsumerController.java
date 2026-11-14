@@ -125,6 +125,12 @@ public class ApiConsumerController {
 
     // ==================== 关注 ====================
 
+    /** 发现好农货：无需登录即可浏览，注册后可关注/加入常购 */
+    @GetMapping("/discover")
+    public ApiResult<?> discover() {
+        return ApiResult.ok(consumerService.discover());
+    }
+
     @PostMapping("/follow")
     public ApiResult<?> follow(@RequestBody Map<String, Object> body, HttpSession session) {
         Long consumerId = findConsumerId(session);

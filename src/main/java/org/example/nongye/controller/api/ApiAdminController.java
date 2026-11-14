@@ -50,7 +50,10 @@ public class ApiAdminController {
     private PasswordHelper passwordHelper;
 
     private SysUser current(HttpSession session) {
-        SysUser user = (SysUser) session.getAttribute("loginUser");
+        SysUser user = org.example.nongye.common.AuthContext.user();
+        if (user == null) {
+            user = (SysUser) session.getAttribute("loginUser");
+        }
         if (user == null) {
             throw ApiException.unauthorized("请先登录");
         }

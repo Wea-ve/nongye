@@ -6,6 +6,7 @@
       <div class="t-links">
         <router-link to="/assistant">我的助手</router-link>
         <router-link to="/invite/new" v-if="consumer.profile">邀请朋友</router-link>
+        <a v-if="consumer.profile" href="javascript:;" @click="switchAccount">切换账号</a>
         <router-link to="/login">管理入口</router-link>
       </div>
     </header>
@@ -17,6 +18,31 @@
         <span class="tip-ico">💡</span>
         <span class="tip-text">{{ home.tip }}</span>
         <span class="tip-arrow">→</span>
+      </el-card>
+
+      <!-- 发现好农货：注册后没有关注时的浏览入口 -->
+      <el-card v-if="discover.length" shadow="never" class="t-card">
+        <template #header>
+          <div class="disc-head">
+            <span>🌱 发现好农货</span>
+            <span class="disc-sub">点进去可关注农场、加入常购、问 AI</span>
+          </div>
+        </template>
+        <div class="disc-list">
+          <div v-for="(d, i) in discover" :key="i" class="disc-item" @click="openTraceCode(d.traceCode)">
+            <div class="disc-crop">{{ d.cropName }}<span class="disc-variety">{{ d.variety }}</span></div>
+            <div class="disc-farmer">{{ d.farmerName || '本地农户' }}</div>
+            <div class="disc-tags">
+              <el-tag v-if="d.promiseSummary" size="small" type="success" effect="plain">{{ d.promiseSummary }}</el-tag>
+              <el-tag v-if="d.subscribeOpen" size="small" effect="plain">可订阅</el-tag>
+              <el-tag v-if="d.onSale" size="small" effect="plain" type="warning">在售</el-tag>
+            </div>
+            <div class="disc-bottom">
+              <span class="disc-status">{{ d.statusText }}<template v-if="d.expectDate"> · 预计 {{ d.expectDate }}</template></span>
+              <span class="disc-go">去看看 →</span>
+            </div>
+          </div>
+        </div>
       </el-card>
 
       <!-- 我的信任清单 -->
@@ -151,7 +177,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import http, { type ApiError } from '../../api/http'
-import { consumer, fetchConsumerMe, consumerLogin, consumerRegister } from '../../store/auth'
+import { consumer, fetchConsumerMe, consumerLogin, consumerRegister, consumerLogout } from '../../store/auth'
 
 const router = useRouter()
 const loading = ref<boolean>(false)
@@ -172,6 +198,19 @@ interface PromiseItem {
   status?: 'FULFILLED' | 'FAILED' | 'UNKNOWN' | string
   statusText?: string
   remark?: string
+}
+
+interface DiscoverItem {
+  traceCode?: string
+  cropName: string
+  variety?: string
+  farmerName?: string
+  promiseSummary?: string
+  price?: number
+  onSale?: boolean
+  subscribeOpen?: boolean
+  statusText?: string
+  expectDate?: string
 }
 
 interface GrowingItem {
@@ -204,6 +243,7 @@ interface HomeData {
 }
 
 const home = ref<HomeData | null>(null)
+const discover = ref<DiscoverItem[]>([])
 const loginForm = reactive({ phone: '' })
 
 /* ===== 注册成为信任者 ===== */
@@ -273,6 +313,15 @@ function openTrace(g: GrowingItem): void {
 /** 信任清单条目 → 对应批次溯源页 */
 function openTraceCode(traceCode?: string): void {
   if (traceCode) router.push('/trace/' + traceCode)
+}
+
+/** 退出当前消费者身份，便于演示时注册/切换成另一个信任者 */
+async function switchAccount(): Promise<void> {
+  await consumerLogout()
+  consumer.profile = null
+  consumer.loaded = false
+  ElMessage.success('已退出当前消费者，可重新注册新的信任者')
+  location.reload()
 }
 
 function slaRemainHours(t: TodoItem): number {
@@ -352,6 +401,9 @@ async function doLogin(): Promise<void> {
 onMounted(async () => {
   await fetchConsumerMe()
   await loadHome()
+  try {
+    discover.value = await http.get<DiscoverItem[]>('/api/consumer/discover')
+  } catch { discover.value = [] }
 })
 </script>
 
@@ -383,6 +435,25 @@ onMounted(async () => {
 .tip-ico { font-size: 20px; }
 .tip-text { flex: 1; color: #2e7d32; font-size: 14px; }
 .tip-arrow { color: #2e7d32; font-weight: 700; font-size: 16px; }
+
+/* 发现好农货 */
+.disc-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.disc-sub { font-size: 12px; color: #8a9a8e; font-weight: 400; }
+.disc-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.disc-item {
+  border: 1px solid #e8f1e8; border-radius: 10px; padding: 12px;
+  background: #f7faf7; cursor: pointer; transition: all .15s;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.disc-item:hover { background: #eef6ee; border-color: #c8e6c9; transform: translateY(-1px); }
+.disc-crop { font-size: 15px; font-weight: 700; color: #23422a; }
+.disc-variety { font-size: 12px; color: #8a9a8e; font-weight: 400; margin-left: 6px; }
+.disc-farmer { font-size: 12.5px; color: #4b5f51; }
+.disc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.disc-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+.disc-status { font-size: 12px; color: #8a9a8e; }
+.disc-go { font-size: 12px; color: #2e7d32; }
+.disc-item:hover .disc-go { text-decoration: underline; }
 
 /* 清单行 */
 .follow-list { display: flex; flex-direction: column; gap: 10px; }
@@ -458,5 +529,6 @@ onMounted(async () => {
 @media (max-width: 768px) {
   .t-links { gap: 12px; }
   .growing-right, .todo-right { width: 100%; justify-content: flex-start; }
+  .disc-list { grid-template-columns: 1fr; }
 }
 </style>

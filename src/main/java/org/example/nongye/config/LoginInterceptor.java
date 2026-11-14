@@ -41,7 +41,10 @@ public class LoginInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        SysUser user = (SysUser) request.getSession().getAttribute("loginUser");
+        SysUser user = org.example.nongye.common.AuthContext.user();
+        if (user == null) {
+            user = (SysUser) request.getSession().getAttribute("loginUser");
+        }
         if (user == null) {
             response.sendRedirect("/login");
             return false;

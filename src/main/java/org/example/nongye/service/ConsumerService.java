@@ -245,6 +245,42 @@ public class ConsumerService {
     }
 
     /**
+     * 发现好农货：可供关注/常购的批次（优先已开放订阅、已上架或有公开承诺的）
+     */
+    public List<Map<String, Object>> discover() {
+        List<CropBatch> all = new ArrayList<>(cropBatchMapper.selectByStatus("PLANTING", "GROWING", "HARVESTED"));
+        // 有公开承诺 / 已上架 / 开放订阅的排在前面，其余批次作为可选发现项补齐
+        all.sort((a, b) -> Boolean.compare(isFeatured(b), isFeatured(a)));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (CropBatch b : all) {
+            // 没有溯源码的批次无法进入溯源页，跳过
+            if (b.getTraceCode() == null || b.getTraceCode().isBlank()) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("traceCode", b.getTraceCode());
+            m.put("cropName", b.getCropName());
+            m.put("variety", b.getVariety());
+            m.put("farmerName", b.getFarmerName());
+            m.put("promiseSummary", b.getPromiseSummary());
+            m.put("price", b.getPrice());
+            m.put("stock", b.getStock());
+            m.put("onSale", b.getOnSale() != null && b.getOnSale() == 1);
+            m.put("subscribeOpen", b.getSubscribeOpen() != null && b.getSubscribeOpen() == 1);
+            m.put("status", b.getStatus());
+            m.put("statusText", "HARVESTED".equals(b.getStatus()) ? "已采收" : "生长中");
+            m.put("expectDate", b.getExpectHarvestDate() == null ? null : b.getExpectHarvestDate().toString());
+            out.add(m);
+            if (out.size() >= 6) break;
+        }
+        return out;
+    }
+
+    private boolean isFeatured(CropBatch b) {
+        return (b.getSubscribeOpen() != null && b.getSubscribeOpen() == 1)
+                || (b.getOnSale() != null && b.getOnSale() == 1)
+                || (b.getPromiseSummary() != null && !b.getPromiseSummary().isBlank());
+    }
+
+    /**
      * 消费者关注列表：联表 SysUser/CropBatch 补 farmName/batchNo/cropName
      */
     public List<Map<String, Object>> getConsumerFollows(Long consumerId) {

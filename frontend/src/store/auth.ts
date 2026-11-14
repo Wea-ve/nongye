@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import http from '../api/http'
+import { clearAuthToken, getAuthToken, setAuthToken } from '../api/token'
 
 export type Role = 'farmer' | 'dealer' | 'admin'
 
@@ -38,6 +39,12 @@ export const roleMap: Record<Role, RoleInfo> = {
 
 export async function fetchMe(force = false): Promise<AuthUser | null> {
   if (auth.loaded && !force) return auth.user
+  if (!getAuthToken()) {
+    // 当前标签页没有任何登录凭证，无需请求后端
+    auth.user = null
+    auth.loaded = true
+    return null
+  }
   try {
     auth.user = await http.get<AuthUser>('/api/auth/me')
   } catch {
@@ -48,7 +55,9 @@ export async function fetchMe(force = false): Promise<AuthUser | null> {
 }
 
 export async function login(username: string, password: string, role: Role): Promise<AuthUser> {
-  const user = await http.post<AuthUser>('/api/auth/login', { username, password, role })
+  const res = await http.post<AuthUser & { token: string }>('/api/auth/login', { username, password, role })
+  const { token, ...user } = res
+  setAuthToken(token)
   auth.user = user
   auth.loaded = true
   return user
@@ -56,6 +65,7 @@ export async function login(username: string, password: string, role: Role): Pro
 
 export async function logout(): Promise<void> {
   try { await http.post('/api/auth/logout') } catch { /* 忽略 */ }
+  clearAuthToken()
   auth.user = null
   auth.loaded = true
 }

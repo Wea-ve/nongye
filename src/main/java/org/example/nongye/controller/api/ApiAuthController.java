@@ -1,12 +1,15 @@
 package org.example.nongye.controller.api;
 
 import cn.hutool.crypto.SecureUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.example.nongye.common.ApiException;
 import org.example.nongye.common.ApiResult;
+import org.example.nongye.common.AuthContext;
 import org.example.nongye.common.PasswordHelper;
 import org.example.nongye.entity.SysUser;
 import org.example.nongye.mapper.SysUserMapper;
+import org.example.nongye.service.AuthTokenService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +23,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 认证与个人中心 REST 接口（session 会话沿用，前端 axios 自动带 cookie）
+ * 认证与个人中心 REST 接口。
+ * 身份优先取请求头 X-Auth-Token（支持同浏览器多标签页多角色），未携带时回退 HttpSession。
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -32,13 +36,22 @@ public class ApiAuthController {
     private SysUserMapper userMapper;
     @Autowired
     private PasswordHelper passwordHelper;
+    @Autowired
+    private AuthTokenService tokenService;
 
     @Value("${upload.path}")
     private String uploadPath;
 
+    private String tokenOf(HttpServletRequest request) {
+        return request == null ? null : request.getHeader("X-Auth-Token");
+    }
+
     /** 当前登录用户；未登录抛 401 */
     private SysUser current(HttpSession session) {
-        SysUser user = (SysUser) session.getAttribute("loginUser");
+        SysUser user = AuthContext.user();
+        if (user == null) {
+            user = (SysUser) session.getAttribute("loginUser");
+        }
         if (user == null) {
             throw ApiException.unauthorized("请先登录");
         }
@@ -81,17 +94,23 @@ public class ApiAuthController {
             userMapper.updatePassword(user.getId(), passwordHelper.encode(password));
         }
         session.setAttribute("loginUser", user);
+        // 签发 token：前端按标签页保存，多角色可同时在线
+        String token = tokenService.issue(user);
+        Map<String, Object> data = view(user);
+        data.put("token", token);
         log.info("用户登录成功：{}({})", username, user.getRole());
-        return ApiResult.ok(view(user));
+        return ApiResult.ok(data);
     }
 
     @PostMapping("/logout")
-    public ApiResult<Void> logout(HttpSession session) {
-        Object u = session.getAttribute("loginUser");
-        if (u instanceof SysUser user) {
-            log.info("用户登出：{}", user.getUsername());
+    public ApiResult<Void> logout(HttpServletRequest request, HttpSession session) {
+        SysUser current = AuthContext.user();
+        if (current != null) {
+            log.info("用户登出：{}", current.getUsername());
         }
-        session.invalidate();
+        tokenService.revoke(tokenOf(request));
+        // 只清理后台登录身份，不销毁整个会话：同浏览器其他标签页的消费者身份不受影响
+        session.removeAttribute("loginUser");
         return ApiResult.ok();
     }
 
@@ -102,7 +121,7 @@ public class ApiAuthController {
     }
 
     @PutMapping("/profile")
-    public ApiResult<Map<String, Object>> updateProfile(@RequestBody Map<String, String> body, HttpSession session) {
+    public ApiResult<Map<String, Object>> updateProfile(@RequestBody Map<String, String> body, HttpServletRequest request, HttpSession session) {
         SysUser user = current(session);
         String realName = body.getOrDefault("realName", "").trim();
         if (realName.isEmpty()) {
@@ -114,12 +133,14 @@ public class ApiAuthController {
         userMapper.updateProfile(user);
         SysUser fresh = userMapper.selectById(user.getId());
         session.setAttribute("loginUser", fresh);
+        tokenService.refresh(tokenOf(request), fresh);
         log.info("用户[{}]更新个人信息", fresh.getUsername());
         return ApiResult.ok(view(fresh));
     }
 
     @PostMapping("/avatar")
-    public ApiResult<Map<String, Object>> uploadAvatar(@RequestParam("file") MultipartFile file, HttpSession session) throws Exception {
+    public ApiResult<Map<String, Object>> uploadAvatar(@RequestParam("file") MultipartFile file,
+                                                       HttpServletRequest request, HttpSession session) throws Exception {
         SysUser user = current(session);
         if (file == null || file.isEmpty()) {
             throw ApiException.badRequest("请选择头像图片");
@@ -141,6 +162,7 @@ public class ApiAuthController {
         userMapper.updateAvatar(user.getId(), url);
         SysUser fresh = userMapper.selectById(user.getId());
         session.setAttribute("loginUser", fresh);
+        tokenService.refresh(tokenOf(request), fresh);
         log.info("用户[{}]更新头像", fresh.getUsername());
         return ApiResult.ok(Map.of("avatar", url));
     }
