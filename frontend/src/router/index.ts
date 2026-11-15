@@ -61,9 +61,53 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)', component: () => import('../views/NotFoundView.vue'), meta: { public: true } }
 ]
 
+// 页面标题映射：多标签页场景下能一眼分清在哪个页面
+const TITLE_MAP: Record<string, string> = {
+  '/login': '登录',
+  '/consumer/home': '信任者首页',
+  '/consumer/assistant': '消费助手',
+  '/assistant': '消费助手',
+  '/complaint/new': '提交投诉',
+  '/complaint/query': '投诉查询',
+  '/admin/bigscreen': '数据大屏',
+  '/farmer/dashboard': '农户工作台',
+  '/farmer/batch': '批次管理',
+  '/farmer/logs': '农事记录',
+  '/farmer/trace-codes': '溯源码管理',
+  '/farmer/reports': '检测报告',
+  '/farmer/sales': '销售记录',
+  '/farmer/promises': '信任承诺',
+  '/farmer/complaints': '售后工单',
+  '/dealer/dashboard': '经销商工作台',
+  '/dealer/inbound': '入库登记',
+  '/dealer/outbound': '出库登记',
+  '/dealer/records': '流转记录',
+  '/dealer/inbound-records': '入库记录',
+  '/dealer/outbound-records': '出库记录',
+  '/dealer/trace': '溯源查询',
+  '/admin/dashboard': '管理工作台',
+  '/admin/users': '用户管理',
+  '/admin/complaints': '工单调度',
+  '/admin/batches': '批次总览',
+  '/admin/farming-logs': '农事留痕',
+  '/admin/reports': '检测报告管理',
+  '/admin/trace-records': '追溯记录',
+  '/admin/trace': '追溯查询',
+  '/admin/scan-stats': '扫码统计'
+}
+
 const router = createRouter({
   history: createWebHistory('/app/'),
   routes
+})
+
+router.afterEach((to) => {
+  let name = TITLE_MAP[to.path]
+  if (!name && to.path.startsWith('/trace/')) name = '溯源详情'
+  if (!name && to.path.startsWith('/invite/')) name = '农户邀请'
+  if (!name && to.path.startsWith('/assistant/')) name = '消费助手'
+  if (!name && to.path.startsWith('/farmer/batch/')) name = '批次详情'
+  document.title = name ? `${name} · 安溯·知源` : '安溯·知源 VeriTrace'
 })
 
 router.beforeEach(async (to) => {

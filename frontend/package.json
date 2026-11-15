@@ -1,8 +1,12 @@
 {
   "name": "nongye-frontend",
   "version": "1.0.0",
+  "description": "安溯·知源 VeriTrace 前端（Vue3 + TS + Vite）",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
