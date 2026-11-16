@@ -13,6 +13,14 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES = [
     (os.path.join(BASE, "target", "nongye-0.0.1-SNAPSHOT.jar"), "/opt/nongye/nongye.jar"),
     (os.path.join(BASE, "nongyeplus.sql"), "/tmp/nongyeplus.sql"),
+    (os.path.join(BASE, "deploy", "missing_tables.sql"), "/tmp/missing_tables.sql"),
+    # 升级脚本：补信任者体系缺失列（幂等，按 information_schema 判断后再 ALTER）
+    (os.path.join(BASE, "sql", "upgrade_trust_consumer.sql"), "/tmp/upgrade_trust_consumer.sql"),
+    (os.path.join(BASE, "sql", "upgrade_ai_evidence.sql"), "/tmp/upgrade_ai_evidence.sql"),
+    (os.path.join(BASE, "sql", "ai_knowledge.sql"), "/tmp/ai_knowledge.sql"),
+    (os.path.join(BASE, "sql", "trust_promise_seed.sql"), "/tmp/trust_promise_seed.sql"),
+    (os.path.join(BASE, "sql", "consumer_knowledge_seed.sql"), "/tmp/consumer_knowledge_seed.sql"),
+    (os.path.join(BASE, "sql", "demo_trust_scenarios.sql"), "/tmp/demo_trust_scenarios.sql"),
     (os.path.join(BASE, "deploy", "nongye.service"), "/etc/systemd/system/nongye.service"),
     (os.path.join(BASE, "deploy", "nginx-nongye.conf"), "/etc/nginx/sites-available/nongye.conf"),
     (os.path.join(BASE, "deploy", "deploy-nongye.sh"), "/tmp/deploy-nongye.sh"),

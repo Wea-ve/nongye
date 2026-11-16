@@ -17,6 +17,23 @@ else
     mysql -e "CREATE DATABASE \`$DB_NAME\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
     mysql "$DB_NAME" < /tmp/nongyeplus.sql
     echo "  已导入 nongyeplus.sql"
+
+    # 基础库只有 8 张表，信任者体系另有 6 张表 + 若干新增列，必须按顺序补导
+    if [ -f /tmp/missing_tables.sql ]; then
+        mysql "$DB_NAME" < /tmp/missing_tables.sql && echo "  已导入 missing_tables.sql（6 张信任者体系表）"
+    fi
+
+    # 升级脚本：按 information_schema 判断后 ALTER，重复执行安全
+    # 漏跑 upgrade_trust_consumer.sql 会导致 complaint.overdue 等 11 个列缺失，
+    # 管理端工作台直接抛 Unknown column 'overdue' in 'where clause'
+    for f in upgrade_trust_consumer.sql upgrade_ai_evidence.sql ai_knowledge.sql \
+             trust_promise_seed.sql consumer_knowledge_seed.sql demo_trust_scenarios.sql; do
+        if [ -f "/tmp/$f" ]; then
+            mysql "$DB_NAME" < "/tmp/$f" && echo "  已导入 $f"
+        else
+            echo "  跳过 $f（未上传）"
+        fi
+    done
     IMPORTED=1
 fi
 

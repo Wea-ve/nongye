@@ -139,6 +139,27 @@ python D:\若依\nongye\deploy\deploy-nongye.py --upload-only
    "ECS 专属安全防护权益限时领取""简捷版本控制台全新上线"是 fixed 浮层，坐标点击会被拦。
    → 用 DOM 移除 `.ecs-core-modal` 后再点，或直接 `display:none`。
 
+6. **管理端工作台顶部红字 `Unknown column 'overdue' in 'where clause'`**
+   只导了 `nongyeplus.sql` + `missing_tables.sql`，**漏跑 `sql/upgrade_trust_consumer.sql`**，
+   结果 `complaint`、`crop_batch`、`scan_log` 三张表少了 11 个列：
+   `complaint(consumer_id, sla_hours, first_reply_time, overdue)`、
+   `crop_batch(on_sale, price, stock, subscribe_open, promise_summary)`、
+   `scan_log(consumer_id, scene)`。
+   → 该脚本本身是幂等的（先查 `information_schema` 再 `ALTER`），直接执行即可：
+   `mysql nongyeplus < sql/upgrade_trust_consumer.sql`。
+   部署脚本 `deploy-nongye.sh` 已加入这一步，重装不会再漏。
+
+7. **页面打开要等十几秒、组件一个个慢慢冒出来**
+   服务端本身很快（本机 1MB 静态文件 0.013s），慢在跨境链路：到哈尔滨实测下行只有约
+   70 KB/s，首屏约 1.2 MB 未压缩 JS 要 14.6 秒。
+   两个原因叠在一起：
+   - `gzip_proxied` 默认 `off`，**反代响应根本不会被压缩**（`gzip_types` 配了也没用）；
+   - 后端返回 `Cache-Control: no-store`，每次访问都全量重下。
+   → `nginx-nongye.conf` 已加 `gzip_proxied any` + `proxy_set_header Accept-Encoding ""`，
+   并对 `/app/assets/` 设 `max-age=2592000, immutable`。
+   实测 `vendor-element` 从 1,089,555 字节降到 341,220 字节，**下载 14.6s → 2.26s**，首屏约 3 秒；
+   二次访问直接命中浏览器缓存，基本秒开。
+
 ---
 
 ## 八、AI 已接入（2026-11-16）
