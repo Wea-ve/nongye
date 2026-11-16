@@ -2,6 +2,10 @@ server:
   port: 8080
   servlet:
     context-path: /
+    session:
+      # 只用 Cookie 传递会话：避免 Tomcat 在重定向地址后拼 ;jsessionid，
+      # 导致前端路由把 /app/login;jsessionid=... 当成未知路径而显示 404
+      tracking-modes: cookie
 
 spring:
   application:

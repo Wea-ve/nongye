@@ -58,7 +58,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'admin/scan-stats', component: () => import('../views/admin/ScanStatsView.vue'), meta: { role: 'admin' } }
     ]
   },
-  { path: '/:pathMatch(.*)', component: () => import('../views/NotFoundView.vue'), meta: { public: true } }
+  // 任何未匹配地址（旧链接、输错、过期书签）统一回到登录页，避免展示 404 页面
+  { path: '/:pathMatch(.*)*', redirect: '/login' }
 ]
 
 // 页面标题映射：多标签页场景下能一眼分清在哪个页面

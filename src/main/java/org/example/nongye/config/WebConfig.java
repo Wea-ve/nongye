@@ -36,11 +36,17 @@ public class WebConfig implements WebMvcConfigurer {
                 .addResourceLocations("classpath:/static/js/")
                 .setCachePeriod(0);
 
+        // 带内容哈希的 JS/CSS：文件名随内容变化，可安全缓存
+        registry.addResourceHandler("/app/assets/**")
+                .addResourceLocations("classpath:/static/app/assets/")
+                .setCachePeriod(0);
+
         // Vue SPA（前端构建产物 static/app/）：真实文件直接返回，
         // 其余路径回退 index.html 交给 vue-router 处理（history 模式刷新不 404）
+        // 入口 HTML 必须 no-store：否则浏览器/会话恢复可能拿到旧版本入口，出现白屏或 404
         registry.addResourceHandler("/app/**")
                 .addResourceLocations("classpath:/static/app/")
-                .setCachePeriod(0)
+                .setCacheControl(org.springframework.http.CacheControl.noStore())
                 .resourceChain(true)
                 .addResolver(new org.springframework.web.servlet.resource.PathResourceResolver() {
                     @Override

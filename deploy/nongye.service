@@ -1,0 +1,19 @@
+[Unit]
+Description=Nongye VeriTrace Platform (Spring Boot 4)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nongye
+# 敏感配置（数据库密码、AI API Key）单独放在 600 权限的文件里
+EnvironmentFile=/etc/nongye.env
+ExecStart=/usr/bin/java -Xms512m -Xmx1536m -jar /opt/nongye/nongye.jar --server.port=8081
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/opt/nongye/app.log
+StandardError=append:/opt/nongye/app.log
+
+[Install]
+WantedBy=multi-user.target
